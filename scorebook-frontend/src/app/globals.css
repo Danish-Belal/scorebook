@@ -1,0 +1,113 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base:       #080b14;
+  --bg-card:       #0d1117;
+  --bg-card-hover: #111827;
+  --bg-elevated:   #161d2e;
+  --border:        rgba(255, 255, 255, 0.06);
+  --border-hover:  rgba(255, 255, 255, 0.12);
+  --text-primary:  #f1f5f9;
+  --text-secondary:#94a3b8;
+  --text-muted:    #475569;
+  --brand:         #3b63ed;
+  --brand-glow:    rgba(59, 99, 237, 0.35);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg-base); min-height: 100vh; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Glass card ── */
+.glass {
+  background: rgba(13, 17, 23, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+}
+
+.glass-hover:hover {
+  background: rgba(22, 29, 46, 0.9);
+  border-color: var(--border-hover);
+}
+
+/* ── Score ring ── */
+.score-ring {
+  filter: drop-shadow(0 0 20px rgba(59, 99, 237, 0.4));
+}
+
+/* ── Animated gradient text ── */
+.gradient-text {
+  background: linear-gradient(135deg, #fff 0%, #93c5fd 50%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-brand {
+  background: linear-gradient(135deg, #3b63ed 0%, #818cf8 50%, #c084fc 100%);
+  background-size: 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-x 6s ease infinite;
+}
+
+/* ── Glow effects ── */
+.glow-brand { box-shadow: 0 0 30px var(--brand-glow), 0 0 60px rgba(59,99,237,0.15); }
+.glow-sm    { box-shadow: 0 0 15px var(--brand-glow); }
+
+/* ── Mesh gradient background ── */
+.mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,99,237,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 80% at 80% 80%, rgba(129,140,248,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(192,132,252,0.04) 0%, transparent 70%);
+}
+
+/* ── Number counter animation ── */
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+/* ── Pulse ring ── */
+.pulse-ring::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 1px solid rgba(59,99,237,0.4);
+  animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+  75%, 100% { transform: scale(1.1); opacity: 0; }
+}
+
+/* ── Platform tier badges ── */
+.tier-s { background: linear-gradient(135deg, rgba(59,99,237,0.2), rgba(99,102,241,0.1)); border-color: rgba(59,99,237,0.4); }
+.tier-a { background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(20,184,166,0.1)); border-color: rgba(16,185,129,0.4); }
+.tier-b { background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(234,179,8,0.1)); border-color: rgba(245,158,11,0.4); }
+.tier-c { background: linear-gradient(135deg, rgba(148,163,184,0.1), rgba(100,116,139,0.05)); border-color: rgba(148,163,184,0.2); }
+
+/* ── Loading skeleton ── */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

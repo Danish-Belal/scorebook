@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────
+#  ScoreBook — Local Docker services
+#
+#  Only Redis is here. The database (PostgreSQL) is hosted on Neon —
+#  no local DB setup needed at all.
+#
+#  If you use Upstash Redis (recommended), you don't need this file
+#  at all. Only use this for local Redis development.
+# ─────────────────────────────────────────────────────────────────────
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: scorebook_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:

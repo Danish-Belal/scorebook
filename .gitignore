@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+migrations/*.sql
+*.log
+.DS_Store
