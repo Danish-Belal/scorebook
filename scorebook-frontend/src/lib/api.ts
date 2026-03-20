@@ -40,6 +40,16 @@ export class ApiError extends Error {
 export const authApi = {
   githubUrl: () => `${BASE_URL}/auth/github`,
   googleUrl: () => `${BASE_URL}/auth/google`,
+  register: (body: { email: string; password: string; displayName: string }) =>
+    request<{ success: boolean; user: User }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  login: (body: { email: string; password: string }) =>
+    request<{ success: boolean; user: User }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getMe:     () => request<{ user: User }>("/auth/me"),
   logout:    () => request<{ success: boolean }>("/auth/logout", { method: "POST" }),
 };
@@ -60,7 +70,12 @@ export const usersApi = {
 
 // ─── Platforms ────────────────────────────────────────────────────────────────
 export const platformsApi = {
-  list: () => request<{ platforms: PlatformStatus[] }>("/api/platforms"),
+  list: () =>
+    request<{ platforms: PlatformStatus[]; hint?: string }>("/api/platforms"),
+  sync: () =>
+    request<{ success: boolean; queued: number; message: string }>("/api/platforms/sync", {
+      method: "POST",
+    }),
   connect: (profileUrl: string, platform?: string) =>
     request<{ success: boolean; platform: string; username: string; message: string }>(
       "/api/platforms/connect",
@@ -73,6 +88,7 @@ export const platformsApi = {
 // ─── Scores ───────────────────────────────────────────────────────────────────
 export const scoresApi = {
   getMe: () => request<MyScoreResponse>("/api/scores/me"),
+  getQueueStatus: () => request<ScoreQueueStatusResponse>("/api/scores/queue-status"),
   getLeaderboard: (params?: { page?: number; limit?: number; platform?: string }) => {
     const q = new URLSearchParams();
     if (params?.page)     q.set("page",     String(params.page));
@@ -115,12 +131,45 @@ export interface PlatformStatus {
   fetchStatus: "pending" | "success" | "error";
   errorMessage: string | null;
   retryCount: number;
+  /** Server bug / recoverable — use Re-sync */
+  recoverableSyncError?: boolean;
+}
+
+/** BullMQ + DB snapshot for dashboard score spinner (queue name: `compute-score`) */
+export interface ScoreQueueStatusResponse {
+  job: {
+    queueName: string;
+    jobId: string;
+    bullmqState: string;
+    hint?: string;
+    failedReason?: string;
+    resultFinalScore?: number;
+    finishedOn?: number | null;
+    attemptsMade?: number;
+  };
+  /** Redis ZSET scorebook:leaderboard:global — what the API uses for ranks */
+  redisLeaderboard?: {
+    key: string;
+    globalScore: number | null;
+    isMember: boolean;
+  };
+  platformFetch: {
+    pending: number;
+    error: number;
+    success: number;
+    total: number;
+  };
+  database: {
+    hasScoreRow: boolean;
+    compositeScore: number | null;
+    computedAt: string | null;
+  };
 }
 
 export interface MyScoreResponse {
   userId: string;
-  displayName: string;
-  avatarUrl: string | null;
+  displayName?: string;
+  avatarUrl?: string | null;
   compositeScore: number;
   scoreLower: number | null;
   scoreUpper: number | null;

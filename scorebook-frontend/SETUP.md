@@ -33,28 +33,32 @@ Leave it as-is for local development. When you deploy, change this to your produ
 
 ## Step 3 — Run with your backend
 
-Make sure your backend is running first:
+**Easiest — one command from the monorepo root** (`scorebook-clean`, parent of this folder):
 
 ```bash
-# Terminal 1 — backend
-cd scorebook-v2
+cd ..          # repo root
+npm run dev:all
+```
+
+That starts the API, all workers, and this frontend. Frontend: http://localhost:3000 · API: http://localhost:3001
+
+---
+
+**Or separate terminals** (if you prefer):
+
+```bash
+# Terminal 1 — backend (repo root)
 npm run dev
 
-# Terminal 2 — score worker
-cd scorebook-v2
+# Terminal 2 — workers (repo root)
 npm run worker:fetch
-
-# Terminal 3 — score worker
-cd scorebook-v2
 npm run worker:score
+npm run worker:refresh
 
 # Terminal 4 — frontend
 cd scorebook-frontend
 npm run dev
 ```
-
-Frontend runs on: http://localhost:3000
-Backend runs on:  http://localhost:3001
 
 ---
 
@@ -63,9 +67,11 @@ Backend runs on:  http://localhost:3001
 | URL | Description |
 |-----|-------------|
 | `/` | Landing page with live leaderboard preview |
+| `/login` | Email + password sign-in (GitHub/Google links on the same screen) |
+| `/signup` | Create account with email + password → then **Connect** for platform URLs |
 | `/dashboard` | Your personal score dashboard |
 | `/leaderboard` | Global rankings with platform filters |
-| `/connect` | Connect new coding platforms |
+| `/connect` | Connect platforms (single URL or **bulk**, one URL per line) |
 | `/auth/error` | OAuth error fallback |
 
 ---

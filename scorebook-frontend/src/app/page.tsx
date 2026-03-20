@@ -2,16 +2,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Trophy, Zap, GitBranch, BarChart3, Shield, ChevronRight, Star, Users, Activity, Award } from "lucide-react";
-import { scoresApi, LeaderboardEntry } from "@/lib/api";
+import { Trophy, Zap, GitBranch, Shield, ChevronRight, Users, Activity, Award, LayoutDashboard, Plus } from "lucide-react";
+import { scoresApi, LeaderboardEntry, authApi, User } from "@/lib/api";
 import { PLATFORMS } from "@/lib/constants";
-import { BASE_URL } from "@/lib/api";
+import Navbar from "@/components/layout/Navbar";
 
 const PLATFORM_LIST = Object.entries(PLATFORMS);
 
 export default function LandingPage() {
   const [topUsers, setTopUsers] = useState<LeaderboardEntry[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     scoresApi.getLeaderboard({ page: 1, limit: 5 }).then(r => {
@@ -20,37 +21,16 @@ export default function LandingPage() {
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    authApi.getMe().then((r) => setUser(r.user)).catch(() => setUser(null));
+  }, []);
+
   return (
     <div className="min-h-screen mesh-bg">
-
-      {/* ── Nav ── */}
-      <nav className="fixed top-0 w-full z-50 glass border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center glow-sm">
-              <Trophy className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">ScoreBook</span>
-          </div>
-          <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
-            <Link href="/leaderboard" className="hover:text-white transition-colors">Leaderboard</Link>
-            <a href="#platforms" className="hover:text-white transition-colors">Platforms</a>
-            <a href="#how" className="hover:text-white transition-colors">How it works</a>
-          </div>
-          <div className="flex items-center gap-3">
-            <a href={`${BASE_URL}/auth/github`} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white transition-colors">
-              Sign in
-            </a>
-            <a href={`${BASE_URL}/auth/github`}
-               className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-500 hover:bg-brand-600 transition-all glow-sm">
-              Get Started →
-            </a>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* ── Hero ── */}
-      <section className="pt-40 pb-24 px-6 text-center relative overflow-hidden">
+      <section className="pt-28 md:pt-36 pb-24 px-6 text-center relative overflow-hidden">
         {/* Orbs */}
         <div className="absolute top-32 left-1/4 w-96 h-96 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
         <div className="absolute top-48 right-1/4 w-64 h-64 rounded-full bg-purple-500/6 blur-3xl pointer-events-none" />
@@ -73,17 +53,35 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href={`${BASE_URL}/auth/github`}
-               className="group px-8 py-4 rounded-xl font-semibold bg-brand-500 hover:bg-brand-600 transition-all glow-brand text-white flex items-center gap-2 text-base">
-              <GitBranch className="w-4 h-4" />
-              Continue with GitHub
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </a>
-            <Link href="/leaderboard"
-               className="px-8 py-4 rounded-xl font-semibold glass glass-hover transition-all text-slate-300 hover:text-white flex items-center gap-2 text-base border border-white/8">
-              <Trophy className="w-4 h-4" />
-              View Leaderboard
-            </Link>
+            {user ? (
+              <>
+                <Link href="/dashboard"
+                   className="group px-8 py-4 rounded-xl font-semibold bg-brand-500 hover:bg-brand-600 transition-all glow-brand text-white flex items-center gap-2 text-base">
+                  <LayoutDashboard className="w-4 h-4" />
+                  Go to Dashboard
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link href="/connect"
+                   className="px-8 py-4 rounded-xl font-semibold glass glass-hover transition-all text-slate-300 hover:text-white flex items-center gap-2 text-base border border-white/8">
+                  <Plus className="w-4 h-4" />
+                  Add platform
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/signup"
+                   className="group px-8 py-4 rounded-xl font-semibold bg-brand-500 hover:bg-brand-600 transition-all glow-brand text-white flex items-center gap-2 text-base">
+                  <GitBranch className="w-4 h-4" />
+                  Sign up free
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link href="/leaderboard"
+                   className="px-8 py-4 rounded-xl font-semibold glass glass-hover transition-all text-slate-300 hover:text-white flex items-center gap-2 text-base border border-white/8">
+                  <Trophy className="w-4 h-4" />
+                  View Leaderboard
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Stats */}
@@ -222,22 +220,24 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── CTA ── */}
-      <section className="px-6 py-24 border-t border-white/5">
-        <div className="max-w-2xl mx-auto text-center">
-          <div className="glass rounded-3xl p-12 border border-brand-500/20 glow-brand relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-brand-500/10 to-purple-500/5 pointer-events-none" />
-            <Award className="w-12 h-12 text-brand-400 mx-auto mb-6" />
-            <h2 className="text-3xl font-bold mb-4">Ready to see where you rank?</h2>
-            <p className="text-slate-400 mb-8">Join developers already on ScoreBook. Takes 30 seconds to get your first score.</p>
-            <a href={`${BASE_URL}/auth/github`}
-               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold bg-brand-500 hover:bg-brand-600 transition-all text-white glow-sm">
-              <GitBranch className="w-4 h-4" />
-              Get your score now
-            </a>
+      {/* ── CTA (guests only) ── */}
+      {!user && (
+        <section className="px-6 py-24 border-t border-white/5">
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="glass rounded-3xl p-12 border border-brand-500/20 glow-brand relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-brand-500/10 to-purple-500/5 pointer-events-none" />
+              <Award className="w-12 h-12 text-brand-400 mx-auto mb-6" />
+              <h2 className="text-3xl font-bold mb-4">Ready to see where you rank?</h2>
+              <p className="text-slate-400 mb-8">Join developers already on ScoreBook. Takes 30 seconds to get your first score.</p>
+              <Link href="/signup"
+                 className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold bg-brand-500 hover:bg-brand-600 transition-all text-white glow-sm">
+                <GitBranch className="w-4 h-4" />
+                Get your score now
+              </Link>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── Footer ── */}
       <footer className="border-t border-white/5 px-6 py-8">

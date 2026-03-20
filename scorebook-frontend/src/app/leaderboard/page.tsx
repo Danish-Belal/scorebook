@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Search, ChevronLeft, ChevronRight, Filter } from "lucide-react";
-import { scoresApi, LeaderboardEntry } from "@/lib/api";
-import { PLATFORMS, PlatformKey, formatScore, getScoreColor } from "@/lib/constants";
+import { Trophy, Search, ChevronLeft, ChevronRight, UserCircle } from "lucide-react";
+import { scoresApi, LeaderboardEntry, authApi, User, ApiError, RankResponse } from "@/lib/api";
+import { formatScore, getScoreColor } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
 
 const PLATFORM_FILTERS = [
@@ -23,11 +23,38 @@ export default function LeaderboardPage() {
   const [platform, setPlatform] = useState("");
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
+  const [me, setMe]             = useState<User | null>(null);
+  const [myRank, setMyRank]     = useState<RankResponse | null>(null);
+
+  const PAGE_LIMIT = 25;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { user } = await authApi.getMe();
+        if (cancelled) return;
+        setMe(user);
+        try {
+          const r = await scoresApi.getRank(user.id);
+          if (!cancelled) setMyRank(r);
+        } catch (e) {
+          if (!cancelled && e instanceof ApiError && e.status === 404) setMyRank(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setMe(null);
+          setMyRank(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const load = async (p: number, plat: string) => {
     setLoading(true);
     try {
-      const r = await scoresApi.getLeaderboard({ page: p, limit: 25, platform: plat || undefined });
+      const r = await scoresApi.getLeaderboard({ page: p, limit: PAGE_LIMIT, platform: plat || undefined });
       setEntries(r.entries);
       setTotal(r.pagination.totalUsers);
       setPages(r.pagination.totalPages);
@@ -67,6 +94,69 @@ export default function LeaderboardPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* Signed-in: always show your name + overall rank (global composite) */}
+        {me && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 glass rounded-2xl border border-brand-500/25 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {me.avatarUrl ? (
+                <img src={me.avatarUrl} alt="" className="w-12 h-12 rounded-full ring-2 ring-brand-500/40 shrink-0" />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-brand-500/25 flex items-center justify-center text-lg font-bold text-brand-300 shrink-0">
+                  {me.displayName?.[0] ?? <UserCircle className="w-7 h-7 text-brand-400" />}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-400/90">You</p>
+                <p className="text-lg font-bold text-white truncate">{me.displayName}</p>
+                {myRank ? (
+                  <p className="text-sm text-slate-400 mt-0.5">
+                    Overall rank{" "}
+                    <span className="text-white font-semibold">#{myRank.rank}</span>
+                    {" "}of {myRank.totalUsers.toLocaleString()}
+                    {(() => {
+                      const self = myRank.neighbors.find((n) => n.userId === me.id);
+                      if (!self) return null;
+                      return (
+                        <span className="text-slate-500">
+                          {" · "}
+                          <span className={`font-mono font-bold ${getScoreColor(self.score)}`}>
+                            {formatScore(self.score)}
+                          </span>
+                        </span>
+                      );
+                    })()}
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    You’re not on the global leaderboard yet — connect platforms and run a sync so your score is computed.
+                  </p>
+                )}
+              </div>
+            </div>
+            {myRank && !platform && (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = Math.max(1, Math.ceil(myRank.rank / PAGE_LIMIT));
+                  setPage(target);
+                }}
+                className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold bg-brand-500/20 text-brand-300 border border-brand-500/35 hover:bg-brand-500/30 transition-colors"
+              >
+                Jump to my page
+              </button>
+            )}
+            {platform && myRank && (
+              <p className="text-xs text-slate-500 shrink-0 max-w-xs">
+                Rank above is your <span className="text-slate-400">overall</span> position. The table shows the selected platform only.
+              </p>
+            )}
+          </motion.div>
+        )}
 
         {/* Filters + Search */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
@@ -123,6 +213,10 @@ export default function LeaderboardPage() {
                       transition={{ delay: i * 0.03 }}
                       className={`grid grid-cols-12 px-6 py-4 items-center border-b border-white/3 last:border-0 hover:bg-white/2 transition-colors ${
                         entry.rank <= 3 ? "bg-gradient-to-r from-yellow-500/3 to-transparent" : ""
+                      } ${
+                        me?.id === entry.userId
+                          ? "ring-1 ring-inset ring-brand-500/50 bg-brand-500/5"
+                          : ""
                       }`}>
 
                       {/* Rank */}
@@ -138,9 +232,18 @@ export default function LeaderboardPage() {
                           </div>
                         )}
                         <div>
-                          <p className="text-sm font-semibold text-white">{entry.displayName}</p>
-                          {entry.githubLogin && (
+                          <p className="text-sm font-semibold text-white flex items-center gap-2 flex-wrap">
+                            {entry.displayName}
+                            {me?.id === entry.userId && (
+                              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-brand-500/25 text-brand-300 border border-brand-500/35">
+                                You
+                              </span>
+                            )}
+                          </p>
+                          {entry.githubLogin ? (
                             <p className="text-xs text-slate-500">@{entry.githubLogin}</p>
+                          ) : (
+                            <p className="text-xs text-slate-600">ScoreBook member</p>
                           )}
                         </div>
                       </div>

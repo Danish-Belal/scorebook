@@ -2,8 +2,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LayoutDashboard, Users, Plus, LogOut, Menu, X, ChevronDown } from "lucide-react";
-import { authApi, usersApi, User } from "@/lib/api";
+import { Trophy, LayoutDashboard, Users, Plus, LogOut, Menu, X } from "lucide-react";
+import { authApi, User } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function Navbar() {
@@ -23,6 +23,13 @@ export default function Navbar() {
   const handleLogout = async () => {
     await authApi.logout();
     setUser(null);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("scorebook_auto_sync_v1");
+      } catch {
+        /* ignore */
+      }
+    }
     toast.success("Signed out");
     router.push("/");
   };
@@ -34,15 +41,25 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="fixed top-0 w-full z-50 glass border-b border-white/5">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+    <nav className="fixed top-0 left-0 right-0 w-full z-[100] glass border-b border-white/5 pointer-events-auto">
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between pointer-events-auto">
 
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center glow-sm group-hover:scale-105 transition-transform">
+        {/* Logo — always home */}
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 group shrink-0 relative z-[101] cursor-pointer"
+          prefetch={true}
+          onClick={(e) => {
+            if (pathname === "/") {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+          }}
+        >
+          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center glow-sm group-hover:scale-105 transition-transform pointer-events-none">
             <Trophy className="w-4 h-4 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">ScoreBook</span>
+          <span className="font-bold text-lg tracking-tight text-white">ScoreBook</span>
         </Link>
 
         {/* Desktop nav */}
@@ -84,10 +101,12 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <a href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/auth/github`}
-               className="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-500 hover:bg-brand-600 transition-all glow-sm text-white">
+            <Link
+              href="/login"
+              className="px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white transition-colors relative z-[101]"
+            >
               Sign in
-            </a>
+            </Link>
           )}
 
           {/* Mobile menu */}
@@ -108,6 +127,15 @@ export default function Navbar() {
               <Icon className="w-4 h-4" />{label}
             </Link>
           ))}
+          {!user && !loading && (
+            <Link
+              href="/login"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 border-t border-white/10 mt-2 pt-3"
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       )}
     </nav>
