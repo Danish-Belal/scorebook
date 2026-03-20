@@ -9,6 +9,8 @@ export const users = pgTable("users", {
   id:           uuid("id").primaryKey().defaultRandom(),
   email:        text("email").unique(),
   displayName:  text("display_name").notNull(),
+  /** bcrypt hash — null for OAuth-only accounts */
+  passwordHash: text("password_hash"),
   avatarUrl:    text("avatar_url"),
   bio:          text("bio"),
   githubLogin:  text("github_login").unique(),
@@ -88,6 +90,20 @@ export const scores = pgTable("scores", {
   compositeIdx: index("scores_composite_idx").on(t.compositeScore),
 }));
 
+// ─── error_logs ──────────────────────────────────────────────────────────────
+export const errorLogs = pgTable("error_logs", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  level:     text("level").notNull().default("error"), // 'error' | 'warn' | 'info'
+  source:    text("source").notNull(),                 // 'auth' | 'fetch' | 'score' | 'api' | 'refresh'
+  message:   text("message").notNull(),
+  details:   jsonb("details"),
+  userId:    uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  levelIdx:  index("el_level_idx").on(t.level),
+  sourceIdx: index("el_source_idx").on(t.source),
+}));
+
 // ─── scores_history ─────────────────────────────────────────────────────────
 // Daily snapshots for trend charts
 export const scoresHistory = pgTable("scores_history", {
@@ -135,6 +151,7 @@ export type PlatformData    = typeof platformData.$inferSelect;
 export type Score           = typeof scores.$inferSelect;
 export type ScoreHistory    = typeof scoresHistory.$inferSelect;
 export type PlatformSpotlight = typeof platformSpotlights.$inferSelect;
+export type ErrorLog = typeof errorLogs.$inferSelect;
 
 export type PlatformName =
   | "codeforces" | "leetcode" | "codechef" | "atcoder"

@@ -4,6 +4,7 @@ import { platformProfiles } from "../models/schema";
 import { enqueueFetch } from "./queues";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
+import { logError, serializeError } from "../services/errorLogger";
 import { lt, or, isNull } from "drizzle-orm";
 
 async function refreshStaleProfiles(): Promise<void> {
@@ -37,14 +38,18 @@ cron.schedule("0 * * * *", async () => {
   logger.info("[RefreshWorker] Cron triggered");
   try {
     await refreshStaleProfiles();
-  } catch (err: any) {
-    logger.error(`[RefreshWorker] Cron failed: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`[RefreshWorker] Cron failed: ${msg}`);
+    void logError("refresh", "Cron refreshStaleProfiles failed", serializeError(err));
   }
 });
 
 // Also run immediately on startup
 refreshStaleProfiles().catch((err) => {
-  logger.error(`[RefreshWorker] Initial run failed: ${err.message}`);
+  const msg = err instanceof Error ? err.message : String(err);
+  logger.error(`[RefreshWorker] Initial run failed: ${msg}`);
+  void logError("refresh", "Initial refreshStaleProfiles failed", serializeError(err));
 });
 
 logger.info("🚀 RefreshWorker cron started (runs every hour)");

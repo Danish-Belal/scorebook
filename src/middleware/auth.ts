@@ -1,18 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { logError, serializeError } from "../services/errorLogger";
 import { env } from "../config/env";
 import { db } from "../config/database";
 import { users } from "../models/schema";
 import { eq } from "drizzle-orm";
+import { toPublicUser } from "../utils/publicUser";
 
 export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string | null;
-    displayName: string;
-    avatarUrl: string | null;
-    githubLogin: string | null;
-  };
+  user?: Express.User;
 }
 
 export function generateToken(userId: string): string {
@@ -51,9 +47,12 @@ export async function requireAuth(
       return;
     }
 
-    req.user = user;
+    req.user = toPublicUser(user);
     next();
-  } catch {
+  } catch (e) {
+    if (!(e instanceof jwt.JsonWebTokenError) && !(e instanceof jwt.TokenExpiredError)) {
+      void logError("auth/middleware", "requireAuth failed", serializeError(e));
+    }
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }

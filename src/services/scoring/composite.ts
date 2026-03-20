@@ -37,8 +37,8 @@
 
 import { PlatformName } from "../../models/schema";
 import { PLATFORM_WEIGHTS, METRIC_WEIGHTS, PRESTIGE_BOOST } from "./weights";
-import { PlatformMetrics } from "./metrics";
-import { computePRWithInterval, logTransform, LOG_TRANSFORM_METRICS, PercentileContext } from "./percentile";
+import { PlatformMetrics, LOG_TRANSFORM_METRICS } from "./metrics";
+import { computePRWithInterval, logTransform, PercentileContext } from "./percentile";
 
 export type AllPercentileContexts = Map<string, PercentileContext>;
 

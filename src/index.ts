@@ -18,6 +18,8 @@ import platformRoutes  from "./routes/platforms";
 import scoreRoutes     from "./routes/scores";
 
 import { logger } from "./config/logger";
+import { logError, serializeError } from "./services/errorLogger";
+import type { AuthRequest } from "./middleware/auth";
 
 const app = express();
 
@@ -40,7 +42,14 @@ app.use("/api/scores",     scoreRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const userId = (req as AuthRequest).user?.id;
+  void logError(
+    "api",
+    err.message || "Unhandled error",
+    { ...serializeError(err), path: req.path, method: req.method },
+    userId
+  );
   logger.error("Unhandled error", { error: err.message });
   res.status(500).json({ error: "Internal server error" });
 });

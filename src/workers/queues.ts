@@ -1,7 +1,7 @@
 import { Queue } from "bullmq";
-import { redisForBull } from "../config/redis";
+import { bullRedisConnection } from "../config/redis";
 
-const connection = { connection: redisForBull };
+const connection = { connection: bullRedisConnection };
 
 // Queue: fetch platform data for one user + one platform
 export const fetchQueue = new Queue<FetchJobData>("fetch-platform-data", {
@@ -52,25 +52,51 @@ export interface SnapshotJobData {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** BullMQ rejects jobId values containing ":" — use separators like "-". */
+function fetchJobId(userId: string, platform: string): string {
+  return `fetch-${platform}-${userId}`;
+}
+
+function scoreJobId(userId: string): string {
+  return `score-${userId}`;
+}
+
 export async function enqueueFetch(
   userId: string,
   platform: string,
   username: string
 ): Promise<void> {
   await fetchQueue.add(
-    `fetch:${platform}:${userId}`,
+    fetchJobId(userId, platform),
     { userId, platform, username },
-    { jobId: `fetch:${platform}:${userId}` } // Deduplicate
+    { jobId: fetchJobId(userId, platform) } // dedupe same user+platform
   );
 }
 
 export async function enqueueScore(userId: string): Promise<void> {
+  const id = scoreJobId(userId);
+  const existing = await scoreQueue.getJob(id);
+  if (existing) {
+    const state = (await existing.getState()) as string;
+    // Same jobId cannot be re-added while a completed/failed job doc still exists in Redis — user stays "stuck" on the dashboard.
+    if (state === "completed" || state === "failed") {
+      await existing.remove();
+    } else if (
+      state === "waiting" ||
+      state === "delayed" ||
+      state === "active" ||
+      state === "paused" ||
+      state === "waiting-children"
+    ) {
+      return; // already queued / running
+    }
+  }
   await scoreQueue.add(
-    `score:${userId}`,
+    id,
     { userId },
     {
-      jobId:  `score:${userId}`,
-      delay:  2000, // Small delay to allow multiple fetches to complete first
+      jobId: id,
+      delay: 2000, // let concurrent fetches finish before scoring
     }
   );
 }

@@ -16,10 +16,10 @@ export const authLimiter = rateLimit({
   message: { error: "Too many authentication attempts." },
 });
 
-// Manual score refresh: 1 per hour per user
+// Manual score refresh: 1 per minute per user (tighten for prod if needed)
 export const refreshLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
+  windowMs: 60 * 1000,
   max: 1,
   keyGenerator: (req) => (req as any).user?.id ?? req.ip,
-  message: { error: "Score refresh is limited to once per hour." },
+  message: { error: "Score refresh is limited to once every minute." },
 });

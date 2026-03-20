@@ -9,6 +9,7 @@ import { eq, desc } from "drizzle-orm";
 import { getLeaderboard, getUserRankWithNeighbors } from "../services/leaderboard";
 import { enqueueScore } from "../workers/queues";
 import { redis, LEADERBOARD_KEY } from "../config/redis";
+import { getScoreQueueJobStatus } from "../services/scoreQueueStatus";
 import { PLATFORM_DISPLAY_NAMES } from "../services/fetchers";
 
 const router = Router();
@@ -34,6 +35,8 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
   if (!scoreRow) {
     res.json({
       userId,
+      displayName:      req.user!.displayName,
+      avatarUrl:        req.user!.avatarUrl,
       compositeScore: 0,
       rank: null,
       totalUsers,
@@ -90,8 +93,6 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
     detailedBreakdown: scoreRow.scoreBreakdown, // Full per-metric percentiles
     platforms: platformSections,               // ← Individual platform cards for dashboard
     computedAt: scoreRow.computedAt,
-    // "Top X%" label — more readable than raw percentile number
-    topPercent: rank0 !== null ? computeTopPercent(rank0, totalUsers) : null,
     // Specialty titles earned on individual platforms
     titles:         (scoreRow.scoreBreakdown as any)?.titles ?? [],
     // What score could this user reach?
@@ -125,7 +126,48 @@ router.get("/history/:userId", async (req: Request, res: Response) => {
   res.json({ history });
 });
 
-// POST /scores/refresh — manual trigger (rate limited to 1/hr)
+// GET /scores/queue-status — BullMQ `compute-score` job + DB snapshot (dashboard spinner / errors)
+router.get("/queue-status", requireAuth, async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const [jobStatus, platformRows, scoreRows] = await Promise.all([
+    getScoreQueueJobStatus(userId),
+    db
+      .select({ fetchStatus: platformData.fetchStatus })
+      .from(platformData)
+      .where(eq(platformData.userId, userId)),
+    db.select().from(scores).where(eq(scores.userId, userId)).limit(1),
+  ]);
+  const scoreRow = scoreRows[0];
+
+  const pendingFetches = platformRows.filter((r) => r.fetchStatus === "pending").length;
+  const errorFetches = platformRows.filter((r) => r.fetchStatus === "error").length;
+  const successFetches = platformRows.filter((r) => r.fetchStatus === "success").length;
+
+  const zscoreRaw = await redis.zscore(LEADERBOARD_KEY, userId);
+  const redisGlobalScore = zscoreRaw != null ? parseFloat(zscoreRaw) : null;
+
+  res.json({
+    job: jobStatus,
+    redisLeaderboard: {
+      key: LEADERBOARD_KEY,
+      globalScore: redisGlobalScore,
+      isMember: zscoreRaw != null,
+    },
+    platformFetch: {
+      pending: pendingFetches,
+      error: errorFetches,
+      success: successFetches,
+      total: platformRows.length,
+    },
+    database: {
+      hasScoreRow: !!scoreRow,
+      compositeScore: scoreRow ? parseFloat(scoreRow.compositeScore) : null,
+      computedAt: scoreRow?.computedAt ?? null,
+    },
+  });
+});
+
+// POST /scores/refresh — manual trigger (rate limited: once per minute per user)
 router.post("/refresh", requireAuth, refreshLimiter, async (req: AuthRequest, res: Response) => {
   await enqueueScore(req.user!.id);
   res.json({ success: true, message: "Refresh queued — score will update within a few minutes." });

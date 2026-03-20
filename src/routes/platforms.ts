@@ -1,4 +1,4 @@
-import { Router, Response } from "express";
+import { Router, Response, Request } from "express";
 import { z } from "zod";
 import { requireAuth, AuthRequest } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
@@ -8,7 +8,9 @@ import { PLATFORM_NAMES } from "../models/schema";
 import { eq, and } from "drizzle-orm";
 import { extractUsername, detectPlatformFromUrl, PLATFORM_EXAMPLES, PLATFORM_DISPLAY_NAMES } from "../services/fetchers";
 import { enqueueFetch } from "../workers/queues";
+import { queueFetchesAndScoreForUser } from "../services/userQueueBootstrap";
 import { logger } from "../config/logger";
+import type { RequestHandler } from "express";
 
 const router = Router();
 
@@ -66,9 +68,25 @@ router.post("/connect", requireAuth, validateBody(connectSchema), async (req: Au
   });
 });
 
+// POST /platforms/sync — re-queue fetch for every linked profile + score job (same as post-login bootstrap)
+router.post("/sync", requireAuth as RequestHandler, async (req: Request, res: Response) => {
+  const userId = (req as AuthRequest).user!.id;
+  const { queuedFetches } = await queueFetchesAndScoreForUser(userId);
+
+  logger.info(`[Platforms] User ${userId} triggered sync: ${queuedFetches} fetch(es) + score`);
+  res.status(202).json({
+    success: true,
+    queued: queuedFetches,
+    message:
+      queuedFetches > 0
+        ? `Queued ${queuedFetches} fetch job(s) and score calculation. Allow ~1–3 minutes, then refresh the dashboard.`
+        : "No linked profiles with usernames — score recalculation was still queued. Add platforms on Connect if needed.",
+  });
+});
+
 // GET /platforms — list all connected platforms + fetch status
-router.get("/", requireAuth, async (req: AuthRequest, res: Response) => {
-  const userId = req.user!.id;
+router.get("/", requireAuth as RequestHandler, async (req: Request, res: Response) => {
+  const userId = (req as AuthRequest).user!.id;
   const [profiles, dataRows] = await Promise.all([
     db.select().from(platformProfiles).where(eq(platformProfiles.userId, userId)),
     db.select().from(platformData).where(eq(platformData.userId, userId)),
@@ -77,6 +95,7 @@ router.get("/", requireAuth, async (req: AuthRequest, res: Response) => {
   const dataMap = new Map(dataRows.map(d => [d.platform, d]));
   const result = profiles.map(p => {
     const data = dataMap.get(p.platform);
+    const err = data?.errorMessage ?? null;
     return {
       platform:      p.platform,
       displayName:   PLATFORM_DISPLAY_NAMES[p.platform as keyof typeof PLATFORM_DISPLAY_NAMES] ?? p.platform,
@@ -85,12 +104,22 @@ router.get("/", requireAuth, async (req: AuthRequest, res: Response) => {
       addedAt:       p.addedAt,
       lastFetchedAt: p.lastFetchedAt,
       fetchStatus:   data?.fetchStatus ?? "pending",
-      errorMessage:  data?.errorMessage ?? null,
+      errorMessage:  err,
       retryCount:    data?.retryCount ?? 0,
+      /** True when a re-sync usually fixes the issue (e.g. old BullMQ jobId bug). */
+      recoverableSyncError:
+        typeof err === "string" &&
+        (err.includes("Custom Id cannot contain") || err.includes("cannot contain :")),
     };
   });
 
-  res.json({ platforms: result });
+  res.json({
+    platforms: result,
+    hint:
+      result.some((r) => r.recoverableSyncError)
+        ? "Some sync errors are from a fixed server bug. Click “Re-sync all data” on the dashboard (or POST /api/platforms/sync) after restarting the app, then wait 1–3 minutes."
+        : undefined,
+  });
 });
 
 // DELETE /platforms/:platform

@@ -1,5 +1,5 @@
 import { Worker, Job } from "bullmq";
-import { redisForBull } from "../config/redis";
+import { bullRedisConnection } from "../config/redis";
 import { db } from "../config/database";
 import { platformData, platformProfiles } from "../models/schema";
 import { fetchPlatformData } from "../services/fetchers";
@@ -7,6 +7,7 @@ import { extractMetrics } from "../services/scoring/metrics";
 import { enqueueScore, FetchJobData } from "./queues";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
+import { logError, serializeError } from "../services/errorLogger";
 import { eq, and } from "drizzle-orm";
 
 const CONCURRENCY_MAP: Record<string, number> = {
@@ -50,16 +51,34 @@ const worker = new Worker<FetchJobData>(
 
       logger.info(`[FetchWorker] ✅ Fetched ${platform}/${username}`);
 
-      // Trigger score recomputation
-      await enqueueScore(userId);
-    } catch (err: any) {
-      logger.error(`[FetchWorker] ❌ Failed ${platform}/${username}: ${err.message}`);
-      await upsertPlatformData(userId, platform, null, "error", err.message);
+      // Score queue is separate — failures here must not wipe a successful fetch
+      try {
+        await enqueueScore(userId);
+      } catch (enqueueErr: unknown) {
+        const em = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
+        logger.error(`[FetchWorker] enqueueScore failed after successful fetch: ${em}`);
+        void logError(
+          "fetch",
+          "enqueueScore failed after fetch",
+          { ...serializeError(enqueueErr), platform, username, jobId: job.id },
+          userId
+        );
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[FetchWorker] ❌ Failed ${platform}/${username}: ${msg}`);
+      void logError(
+        "fetch",
+        `Fetch failed: ${platform}/${username}`,
+        { ...serializeError(err), platform, username, jobId: job.id },
+        userId
+      );
+      await upsertPlatformData(userId, platform, null, "error", msg);
       throw err; // Re-throw so BullMQ retries
     }
   },
   {
-    connection: redisForBull,
+    connection: bullRedisConnection,
     concurrency: 5, // Total concurrency across all platforms
     limiter: {
       max: 10,
@@ -105,6 +124,13 @@ worker.on("completed", (job) => {
 
 worker.on("failed", (job, err) => {
   logger.error(`[FetchWorker] Job ${job?.id} failed: ${err.message}`);
+  const d = job?.data;
+  void logError(
+    "fetch",
+    `Job permanently failed: ${job?.id}`,
+    { ...serializeError(err), jobId: job?.id, ...d },
+    d?.userId
+  );
 });
 
 logger.info("🚀 FetchWorker started");

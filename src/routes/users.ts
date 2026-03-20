@@ -5,6 +5,7 @@ import { validateBody } from "../middleware/validate";
 import { db } from "../config/database";
 import { users, platformProfiles, scores } from "../models/schema";
 import { eq } from "drizzle-orm";
+import { toPublicUser } from "../utils/publicUser";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.patch(
       .set(req.body)
       .where(eq(users.id, req.user!.id))
       .returning();
-    res.json({ user: updated });
+    res.json({ user: toPublicUser(updated) });
   }
 );
 
