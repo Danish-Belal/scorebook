@@ -271,11 +271,11 @@ export function computeCompositeScore(
   const scoreUpper = Math.min(100, Math.round((finalScore + spread) * 100) / 100);
 
   // ── Step 8: Platform titles ───────────────────────────────────────────────
-  const titles = computeTitles(connectedPS, connectedScores, userMetrics, platformRanks ?? {});
+  const titles = computeTitles(connectedPS, userMetrics, platformRanks ?? {});
 
   // ── Step 9: Potential score ───────────────────────────────────────────────
   const { potentialScore, potentialNote } = computePotential(
-    connectedPS, connectedScores, psScore, engScore, brScore, finalScore
+    connectedPS, psScore, engScore, brScore, finalScore
   );
 
   // ── Step 10: Fairness note ────────────────────────────────────────────────
@@ -366,10 +366,9 @@ function scorePlatform(
 // ─── Helper: Platform Titles ──────────────────────────────────────────────────
 
 function computeTitles(
-  connectedPS:    PlatformName[],
-  scores:         Partial<Record<PlatformName, number>>,
-  metrics:        Partial<Record<PlatformName, PlatformMetrics>>,
-  ranks:          Partial<Record<PlatformName, { rank: number; total: number }>>
+  connectedPS: PlatformName[],
+  metrics:     Partial<Record<PlatformName, PlatformMetrics>>,
+  ranks:       Partial<Record<PlatformName, { rank: number; total: number }>>
 ): PlatformTitle[] {
   const titles: PlatformTitle[] = [];
 
@@ -420,7 +419,6 @@ function computeTitles(
 
 function computePotential(
   connectedPS:  PlatformName[],
-  scores:       Partial<Record<PlatformName, number>>,
   psScore:      number,
   engScore:     number | null,
   brScore:      number | null,

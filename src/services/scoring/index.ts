@@ -73,7 +73,7 @@ async function persistSkippedScore(userId: string, reason: string): Promise<void
       githubScore: zero,
       recencyFactor: zero,
       confidenceFactor: zero,
-      scoreBreakdown: breakdown as any,
+      scoreBreakdown: breakdown as unknown as Record<string, unknown>,
       scoreLowerBound: zero,
       scoreUpperBound: zero,
       computedAt: new Date(),
@@ -93,7 +93,7 @@ async function persistSkippedScore(userId: string, reason: string): Promise<void
         githubScore: zero,
         recencyFactor: zero,
         confidenceFactor: zero,
-        scoreBreakdown: breakdown as any,
+        scoreBreakdown: breakdown as unknown as Record<string, unknown>,
         scoreLowerBound: zero,
         scoreUpperBound: zero,
         computedAt: new Date(),
@@ -184,12 +184,19 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
   const recencyFactor    = computeRecencyFactor(userRaw);
   const confidenceFactor = computeConfidenceFactor(userMetrics);
 
-  // 4. Composite score
-  // Build platform rank map for title computation
-  const platformRanks: Partial<Record<any, { rank: number; total: number }>> = {};
-  for (const p of PS_PLATFORMS) {
-    const rank0 = await redis.zrevrank(`scorebook:leaderboard:${p}`, userId);
-    const total = await redis.zcard(`scorebook:leaderboard:${p}`);
+  // 4. Composite score — parallel Redis reads per PS platform
+  const platformRanks: Partial<Record<PlatformName, { rank: number; total: number }>> = {};
+  const rankTuples = await Promise.all(
+    PS_PLATFORMS.map(async (p) => {
+      const key = platformLeaderboardKey(p);
+      const [rank0, total] = await Promise.all([
+        redis.zrevrank(key, userId),
+        redis.zcard(key),
+      ]);
+      return { p, rank0, total };
+    })
+  );
+  for (const { p, rank0, total } of rankTuples) {
     if (rank0 !== null) platformRanks[p] = { rank: rank0 + 1, total };
   }
 
@@ -212,7 +219,7 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
     githubScore:      String(result.breakdown.github      ?? 0),
     recencyFactor:    String(result.recencyFactor),
     confidenceFactor: String(result.confidenceFactor),
-    scoreBreakdown:   result.platformScores as any,
+    scoreBreakdown:   result.platformScores as unknown as Record<string, unknown>,
     scoreLowerBound:  String(result.scoreLower),
     scoreUpperBound:  String(result.scoreUpper),
     computedAt:       new Date(),
@@ -231,7 +238,7 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
       githubScore:      String(result.breakdown.github      ?? 0),
       recencyFactor:    String(result.recencyFactor),
       confidenceFactor: String(result.confidenceFactor),
-      scoreBreakdown:   result.platformScores as any,
+      scoreBreakdown:   result.platformScores as unknown as Record<string, unknown>,
       scoreLowerBound:  String(result.scoreLower),
       scoreUpperBound:  String(result.scoreUpper),
       computedAt:       new Date(),
@@ -246,31 +253,37 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
     }
   }
 
-  // 7. Update platform spotlights (for individual platform dashboard cards)
-  for (const pd of result.platformScores) {
-    if (!pd.connected || !pd.spotlight) continue;
-    const rank0      = await redis.zrevrank(platformLeaderboardKey(pd.platform), userId);
-    const totalOnPlat = await redis.zcard(platformLeaderboardKey(pd.platform));
-    await db.insert(platformSpotlights).values({
-      userId,
-      platform:             pd.platform,
-      rating:               null,
-      rank:                 rank0 !== null ? rank0 + 1 : null,
-      totalUsersOnPlatform: totalOnPlat,
-      percentile:           String(pd.spotlight.percentileAmongUs),
-      badge:                pd.spotlight.badge,
-      updatedAt:            new Date(),
-    }).onConflictDoUpdate({
-      target: [platformSpotlights.userId, platformSpotlights.platform] as any,
-      set: {
-        rank:                 rank0 !== null ? rank0 + 1 : null,
-        totalUsersOnPlatform: totalOnPlat,
-        percentile:           String(pd.spotlight.percentileAmongUs),
-        badge:                pd.spotlight.badge,
-        updatedAt:            new Date(),
-      },
-    });
-  }
+  // 7. Update platform spotlights (parallel per connected platform with spotlight)
+  await Promise.all(
+    result.platformScores
+      .filter((pd) => pd.connected && pd.spotlight)
+      .map(async (pd) => {
+        const rk = platformLeaderboardKey(pd.platform);
+        const [rank0, totalOnPlat] = await Promise.all([
+          redis.zrevrank(rk, userId),
+          redis.zcard(rk),
+        ]);
+        await db.insert(platformSpotlights).values({
+          userId,
+          platform:             pd.platform,
+          rating:               null,
+          rank:                 rank0 !== null ? rank0 + 1 : null,
+          totalUsersOnPlatform: totalOnPlat,
+          percentile:           String(pd.spotlight!.percentileAmongUs),
+          badge:                pd.spotlight!.badge,
+          updatedAt:            new Date(),
+        }).onConflictDoUpdate({
+          target: [platformSpotlights.userId, platformSpotlights.platform],
+          set: {
+            rank:                 rank0 !== null ? rank0 + 1 : null,
+            totalUsersOnPlatform: totalOnPlat,
+            percentile:           String(pd.spotlight!.percentileAmongUs),
+            badge:                pd.spotlight!.badge,
+            updatedAt:            new Date(),
+          },
+        });
+      })
+  );
 
   // 8. History chart — one row per queue-driven score run (dashboard GET /scores/history)
   const rank0Global = await redis.zrevrank(LEADERBOARD_KEY, userId);

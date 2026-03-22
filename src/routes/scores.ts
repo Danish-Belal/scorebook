@@ -90,7 +90,7 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
       gfg:         scoreRow.gfgScore         ? parseFloat(scoreRow.gfgScore)         : null,
       github:      scoreRow.githubScore      ? parseFloat(scoreRow.githubScore)      : null,
     },
-    detailedBreakdown: scoreRow.scoreBreakdown, // Full per-metric percentiles
+    detailedBreakdown: scoreRow.scoreBreakdown ?? null, // Full per-metric percentiles (null until first score)
     platforms: platformSections,               // ← Individual platform cards for dashboard
     computedAt: scoreRow.computedAt,
     // Specialty titles earned on individual platforms

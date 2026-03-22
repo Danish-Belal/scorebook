@@ -6,6 +6,7 @@ import { Trophy, Zap, GitBranch, Shield, ChevronRight, Users, Activity, Award, L
 import { scoresApi, LeaderboardEntry, authApi, User } from "@/lib/api";
 import { PLATFORMS } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
+import AvatarImg from "@/components/AvatarImg";
 
 const PLATFORM_LIST = Object.entries(PLATFORMS);
 
@@ -125,13 +126,7 @@ export default function LandingPage() {
                       {user.rank === 1 ? "👑" : user.rank === 2 ? "🥈" : user.rank === 3 ? "🥉" : `#${user.rank}`}
                     </div>
                     <div className="flex items-center gap-3">
-                      {user.avatarUrl ? (
-                        <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full ring-1 ring-white/10" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-xs font-bold text-brand-400">
-                          {user.displayName[0]}
-                        </div>
-                      )}
+                      <AvatarImg src={user.avatarUrl} name={user.displayName} className="w-8 h-8" />
                       <div>
                         <p className="text-sm font-medium text-white">{user.displayName}</p>
                         {user.githubLogin && <p className="text-xs text-slate-500">@{user.githubLogin}</p>}

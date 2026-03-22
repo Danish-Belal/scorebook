@@ -52,7 +52,7 @@ router.post("/connect", requireAuth, validateBody(connectSchema), async (req: Au
   await db.insert(platformProfiles)
     .values({ userId, platform, profileUrl, username })
     .onConflictDoUpdate({
-      target: [platformProfiles.userId, platformProfiles.platform] as any,
+      target: [platformProfiles.userId, platformProfiles.platform],
       set: { profileUrl, username, addedAt: new Date() },
     });
 

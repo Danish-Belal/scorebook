@@ -475,19 +475,31 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      scoresApi.getMe(),
-      platformsApi.list(),
-    ]).then(([s, p]) => {
-      setScore(s);
-      setPlatforms(p.platforms);
-      setPlatformHint(p.hint ?? null);
-      if (s.userId) {
-        scoresApi.getHistory(s.userId).then(h => setHistory(h.history)).catch(() => {});
-      }
-    }).catch(() => router.push("/"))
-    .finally(() => setLoading(false));
-  }, []);
+    Promise.allSettled([scoresApi.getMe(), platformsApi.list()])
+      .then(([scoreRes, platRes]) => {
+        if (platRes.status === "fulfilled") {
+          setPlatforms(platRes.value.platforms);
+          setPlatformHint(platRes.value.hint ?? null);
+        }
+        if (scoreRes.status === "fulfilled") {
+          const s = scoreRes.value;
+          setScore(s);
+          if (s.userId) {
+            scoresApi.getHistory(s.userId).then((h) => setHistory(h.history)).catch(() => {});
+          }
+        }
+        const score401 =
+          scoreRes.status === "rejected" &&
+          scoreRes.reason instanceof ApiError &&
+          scoreRes.reason.status === 401;
+        const plat401 =
+          platRes.status === "rejected" &&
+          platRes.reason instanceof ApiError &&
+          platRes.reason.status === 401;
+        if (score401 && plat401) router.push("/");
+      })
+      .finally(() => setLoading(false));
+  }, [router]);
 
   /** Open dashboard with existing session (bookmark): one auto sync+score per tab session */
   useEffect(() => {

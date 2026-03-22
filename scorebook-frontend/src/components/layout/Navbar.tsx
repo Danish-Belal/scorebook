@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Trophy, LayoutDashboard, Users, Plus, LogOut, Menu, X } from "lucide-react";
-import { authApi, User } from "@/lib/api";
+import { authApi, User, ApiError } from "@/lib/api";
+import AvatarImg from "@/components/AvatarImg";
 import { toast } from "sonner";
 
 export default function Navbar() {
@@ -14,9 +15,16 @@ export default function Navbar() {
   const router = useRouter();
 
   useEffect(() => {
-    authApi.getMe()
-      .then(r => setUser(r.user))
-      .catch(() => setUser(null))
+    authApi
+      .getMe()
+      .then((r) => setUser(r.user))
+      .catch((err) => {
+        // 401 = not signed in; anything else (network, 5xx) → same UX: show Sign in
+        setUser(null);
+        if (err instanceof ApiError && err.status !== 401) {
+          console.warn("[Navbar] getMe failed:", err.status, err.message);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -85,13 +93,7 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg glass border border-white/8 cursor-pointer hover:border-white/15 transition-all"
                 onClick={() => router.push("/dashboard")}>
-                {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full" />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-brand-500/30 flex items-center justify-center text-xs font-bold text-brand-400">
-                    {user.displayName[0]}
-                  </div>
-                )}
+                <AvatarImg src={user.avatarUrl} name={user.displayName} className="w-6 h-6" ringClassName="" />
                 <span className="text-sm font-medium text-slate-200">{user.displayName}</span>
               </div>
               <button onClick={handleLogout}

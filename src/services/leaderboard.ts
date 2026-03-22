@@ -127,6 +127,7 @@ export async function getUserRankWithNeighbors(userId: string): Promise<{
     avatarUrl:   userMap.get(uid)?.avatarUrl ?? null,
     githubLogin: userMap.get(uid)?.githubLogin ?? null,
     score:       scoreMap.get(uid) ?? 0,
+    topPercent:  leaderboardTopPercent(start + idx, totalUsers),
   }));
 
   return { rank, totalUsers, neighbors };

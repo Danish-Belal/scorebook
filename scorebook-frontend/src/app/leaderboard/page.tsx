@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Search, ChevronLeft, ChevronRight, UserCircle } from "lucide-react";
+import { Trophy, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { scoresApi, LeaderboardEntry, authApi, User, ApiError, RankResponse } from "@/lib/api";
 import { formatScore, getScoreColor } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
+import AvatarImg from "@/components/AvatarImg";
 
 const PLATFORM_FILTERS = [
   { value: "",            label: "Overall" },
@@ -103,13 +104,12 @@ export default function LeaderboardPage() {
             className="mb-6 glass rounded-2xl border border-brand-500/25 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              {me.avatarUrl ? (
-                <img src={me.avatarUrl} alt="" className="w-12 h-12 rounded-full ring-2 ring-brand-500/40 shrink-0" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-brand-500/25 flex items-center justify-center text-lg font-bold text-brand-300 shrink-0">
-                  {me.displayName?.[0] ?? <UserCircle className="w-7 h-7 text-brand-400" />}
-                </div>
-              )}
+              <AvatarImg
+                src={me.avatarUrl}
+                name={me.displayName || "You"}
+                className="w-12 h-12"
+                ringClassName="ring-2 ring-brand-500/40"
+              />
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-400/90">You</p>
                 <p className="text-lg font-bold text-white truncate">{me.displayName}</p>
@@ -200,6 +200,15 @@ export default function LeaderboardPage() {
                 <div key={i} className="h-16 skeleton mx-4 my-1 rounded-xl" />
               ))}
             </div>
+          ) : entries.length === 0 ? (
+            <div className="px-6 py-16 text-center">
+              <p className="text-lg font-semibold text-white mb-2">No developers ranked yet</p>
+              <p className="text-sm text-slate-400 max-w-md mx-auto">
+                Be the first — connect a platform on ScoreBook and run a sync so your score appears here.
+              </p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-6 py-12 text-center text-slate-400 text-sm">No developers match your search.</div>
           ) : (
             <AnimatePresence mode="wait">
               <motion.div key={`${platform}-${page}`}
@@ -224,13 +233,7 @@ export default function LeaderboardPage() {
 
                       {/* Developer */}
                       <div className="col-span-5 flex items-center gap-3">
-                        {entry.avatarUrl ? (
-                          <img src={entry.avatarUrl} alt="" className="w-9 h-9 rounded-full ring-1 ring-white/10" />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-brand-500/20 flex items-center justify-center text-sm font-bold text-brand-400">
-                            {entry.displayName[0]}
-                          </div>
-                        )}
+                        <AvatarImg src={entry.avatarUrl} name={entry.displayName} className="w-9 h-9" />
                         <div>
                           <p className="text-sm font-semibold text-white flex items-center gap-2 flex-wrap">
                             {entry.displayName}

@@ -21,6 +21,8 @@ export default function ConnectPage() {
   const [bulkText, setBulkText] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<string | null>(null);
+  /** Seconds remaining before redirect to dashboard after a successful connect */
+  const [redirectTick, setRedirectTick] = useState<number | null>(null);
 
   /** Linked platforms from API (for “already connected” UX) */
   const [connectedByPlatform, setConnectedByPlatform] = useState<
@@ -48,6 +50,17 @@ export default function ConnectPage() {
   useEffect(() => {
     refreshConnected();
   }, []);
+
+  useEffect(() => {
+    if (redirectTick === null) return;
+    if (redirectTick <= 0) {
+      setRedirectTick(null);
+      router.push("/dashboard");
+      return;
+    }
+    const id = window.setTimeout(() => setRedirectTick((t) => (t === null ? null : t - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [redirectTick, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -96,7 +109,7 @@ export default function ConnectPage() {
       setUrl("");
       setDetected(null);
       refreshConnected();
-      setTimeout(() => router.push("/dashboard"), 2000);
+      setRedirectTick(2);
     } catch (e: any) {
       setError(e.message || "Failed to connect platform");
       toast.error(e.message || "Connection failed");
@@ -233,9 +246,16 @@ export default function ConnectPage() {
             )}
             {success && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="mt-3 flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
-                <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                {success}
+                className="mt-3 flex items-start gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+                <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p>{success}</p>
+                  {redirectTick !== null && redirectTick > 0 && (
+                    <p className="mt-2 text-xs font-semibold text-emerald-300/95">
+                      Taking you to the dashboard in {redirectTick}s…
+                    </p>
+                  )}
+                </div>
               </motion.div>
             )}
             {error && (

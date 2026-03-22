@@ -25,15 +25,6 @@ export const scoreQueue = new Queue<ScoreJobData>("compute-score", {
   },
 });
 
-// Queue: daily snapshot of scores for history charts
-export const snapshotQueue = new Queue<SnapshotJobData>("score-snapshot", {
-  ...connection,
-  defaultJobOptions: {
-    attempts: 2,
-    removeOnComplete: { count: 20 },
-  },
-});
-
 // ─── Job Data Types ───────────────────────────────────────────────────────────
 
 export interface FetchJobData {
@@ -43,10 +34,6 @@ export interface FetchJobData {
 }
 
 export interface ScoreJobData {
-  userId: string;
-}
-
-export interface SnapshotJobData {
   userId: string;
 }
 

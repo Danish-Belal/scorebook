@@ -5,18 +5,9 @@ import { platformData, platformProfiles } from "../models/schema";
 import { fetchPlatformData } from "../services/fetchers";
 import { extractMetrics } from "../services/scoring/metrics";
 import { enqueueScore, FetchJobData } from "./queues";
-import { env } from "../config/env";
 import { logger } from "../config/logger";
 import { logError, serializeError } from "../services/errorLogger";
 import { eq, and } from "drizzle-orm";
-
-const CONCURRENCY_MAP: Record<string, number> = {
-  codeforces: env.CODEFORCES_CONCURRENCY,
-  leetcode:   env.LEETCODE_CONCURRENCY,
-  github:     env.GITHUB_CONCURRENCY,
-  atcoder:    env.ATCODER_CONCURRENCY,
-  gfg:        env.GFG_CONCURRENCY,
-};
 
 const worker = new Worker<FetchJobData>(
   "fetch-platform-data",
@@ -115,7 +106,7 @@ async function upsertPlatformData(
         errorMessage,
         fetchedAt: new Date(),
       },
-    } as any);
+    });
 }
 
 worker.on("completed", (job) => {
