@@ -10,5 +10,6 @@ export function toPublicUser(user: User): Express.User {
     githubLogin: user.githubLogin,
     createdAt: user.createdAt,
     isPublic: user.isPublic,
+    profileSlug: user.profileSlug ?? null,
   };
 }

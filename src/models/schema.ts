@@ -18,8 +18,11 @@ export const users = pgTable("users", {
   createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow(),
   lastActive:   timestamp("last_active", { withTimezone: true }).defaultNow(),
   isPublic:     boolean("is_public").default(true),
+  /** Pretty public URL segment under /u/:slug — unique when set */
+  profileSlug:  text("profile_slug"),
 }, (t) => ({
   githubIdx: index("users_github_idx").on(t.githubLogin),
+  profileSlugIdx: uniqueIndex("users_profile_slug_idx").on(t.profileSlug),
 }));
 
 // ─── platform_profiles ────────────────────────────────────────────────────────

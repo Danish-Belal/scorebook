@@ -1,20 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, TrendingUp, Loader2 } from "lucide-react";
+import { Trophy, TrendingUp, Loader2, ArrowLeft } from "lucide-react";
 import { scoresApi, MyScoreResponse, ScoreHistory, ApiError } from "@/lib/api";
 import { PLATFORMS, PlatformKey, getScoreColor, getRankBadge } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
 import { ScoreRing, PlatformCard, HistoryChart } from "@/components/dashboard/DashboardVisuals";
+import { isLikelyPublicProfileSegment, normalizePublicProfileSegment } from "@/lib/publicProfilePath";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function PublicProfileBackLink() {
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
+  if (from === "leaderboard") {
+    return (
+      <div className="max-w-7xl mx-auto px-6 pt-4">
+        <Link
+          href="/leaderboard"
+          className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to leaderboard
+        </Link>
+      </div>
+    );
+  }
+  if (from === "home") {
+    return (
+      <div className="max-w-7xl mx-auto px-6 pt-4">
+        <Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Back to home
+        </Link>
+      </div>
+    );
+  }
+  return null;
+}
+
+function SuspendedPublicProfileBackLink() {
+  return (
+    <Suspense fallback={null}>
+      <PublicProfileBackLink />
+    </Suspense>
+  );
+}
 
 export default function PublicProfilePage() {
   const params = useParams();
-  const userId = typeof params.userId === "string" ? params.userId : "";
+  const rawSegment = typeof params.userId === "string" ? params.userId : "";
+  const userId = normalizePublicProfileSegment(rawSegment);
 
   const [score, setScore] = useState<MyScoreResponse | null>(null);
   const [history, setHistory] = useState<ScoreHistory[]>([]);
@@ -22,7 +59,7 @@ export default function PublicProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId || !UUID_RE.test(userId)) {
+    if (!userId || !isLikelyPublicProfileSegment(rawSegment)) {
       setLoading(false);
       setError("invalid");
       return;
@@ -32,11 +69,12 @@ export default function PublicProfilePage() {
     setLoading(true);
     setError(null);
 
-    Promise.all([scoresApi.getPublicProfile(userId), scoresApi.getPublicHistory(userId)])
-      .then(([s, h]) => {
+    scoresApi
+      .getPublicProfile(userId, { includeHistory: true })
+      .then((s) => {
         if (cancelled) return;
         setScore(s);
-        setHistory(h.history ?? []);
+        setHistory(s.history ?? []);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -51,12 +89,13 @@ export default function PublicProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, rawSegment]);
 
-  if (!userId || !UUID_RE.test(userId) || error === "invalid") {
+  if (!userId || !isLikelyPublicProfileSegment(rawSegment) || error === "invalid") {
     return (
       <div className="min-h-screen mesh-bg">
         <Navbar />
+        <SuspendedPublicProfileBackLink />
         <div className="pt-28 max-w-lg mx-auto px-6 text-center">
           <h1 className="text-xl font-bold text-white mb-2">Invalid profile link</h1>
           <p className="text-slate-400 text-sm mb-6">This URL doesn&apos;t look like a valid ScoreBook profile id.</p>
@@ -72,6 +111,7 @@ export default function PublicProfilePage() {
     return (
       <div className="min-h-screen mesh-bg">
         <Navbar />
+        <SuspendedPublicProfileBackLink />
         <div className="pt-28 flex flex-col items-center justify-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
           <p className="text-sm text-slate-400">Loading profile…</p>
@@ -84,6 +124,7 @@ export default function PublicProfilePage() {
     return (
       <div className="min-h-screen mesh-bg">
         <Navbar />
+        <SuspendedPublicProfileBackLink />
         <div className="pt-28 max-w-lg mx-auto px-6 text-center">
           <h1 className="text-xl font-bold text-white mb-2">Profile not available</h1>
           <p className="text-slate-400 text-sm mb-6">
@@ -101,6 +142,7 @@ export default function PublicProfilePage() {
     return (
       <div className="min-h-screen mesh-bg">
         <Navbar />
+        <SuspendedPublicProfileBackLink />
         <div className="pt-28 max-w-lg mx-auto px-6 text-center">
           <h1 className="text-xl font-bold text-white mb-2">Something went wrong</h1>
           <p className="text-slate-400 text-sm mb-6">Couldn&apos;t load this profile. Try again later.</p>
@@ -119,7 +161,8 @@ export default function PublicProfilePage() {
   return (
     <div className="min-h-screen mesh-bg">
       <Navbar />
-      <div className="pt-20 pb-16 max-w-7xl mx-auto px-6">
+      <SuspendedPublicProfileBackLink />
+      <div className="pt-16 pb-16 max-w-7xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}

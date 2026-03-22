@@ -3,25 +3,22 @@
  */
 import { db } from "../config/database";
 import { users, scores, platformData, platformSpotlights } from "../models/schema";
+import type { User } from "../models/schema";
 import { eq } from "drizzle-orm";
 import { redis, LEADERBOARD_KEY } from "../config/redis";
 import { PLATFORM_DISPLAY_NAMES } from "./fetchers";
-
-function computeTopPercent(rank0: number, total: number): string {
-  if (total === 0) return "Top 100%";
-  const pct = ((rank0 + 1) / total) * 100;
-  if (pct <= 1) return "Top 1%";
-  if (pct <= 5) return "Top 5%";
-  if (pct <= 10) return "Top 10%";
-  if (pct <= 25) return "Top 25%";
-  if (pct <= 50) return "Top 50%";
-  return "Top 75%";
-}
+import { topPercentLabel } from "../utils/topPercentLabel";
 
 /** Same JSON shape as legacy GET /scores/me */
-export async function loadScoreDashboardPayload(userId: string): Promise<Record<string, unknown> | null> {
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+export async function loadScoreDashboardPayload(
+  userId: string,
+  options?: { user?: User }
+): Promise<Record<string, unknown> | null> {
+  const user =
+    options?.user ??
+    (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0];
   if (!user) return null;
+  if (options?.user && user.id !== userId) return null;
 
   const [[scoreRow], rank0, totalUsers, spotlightRows, recentData] = await Promise.all([
     db.select().from(scores).where(eq(scores.userId, userId)).limit(1),
@@ -93,6 +90,6 @@ export async function loadScoreDashboardPayload(userId: string): Promise<Record<
     potentialScore: (scoreRow.scoreBreakdown as { potentialScore?: unknown })?.potentialScore ?? null,
     potentialNote: (scoreRow.scoreBreakdown as { potentialNote?: unknown })?.potentialNote ?? null,
     fairnessNote: (scoreRow.scoreBreakdown as { fairness?: { note?: string } })?.fairness?.note ?? null,
-    topPercent: rank0 !== null ? computeTopPercent(rank0, totalUsers) : null,
+    topPercent: rank0 !== null ? topPercentLabel(rank0, totalUsers) : null,
   };
 }

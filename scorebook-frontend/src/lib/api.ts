@@ -72,7 +72,7 @@ export const usersApi = {
     request<{ user: User; platforms: PlatformProfile[]; scoreSnapshot: any }>(
       "/api/users/me"
     ),
-  updateMe: (data: Partial<Pick<User, "displayName" | "bio" | "isPublic">>) =>
+  updateMe: (data: Partial<Pick<User, "displayName" | "bio" | "isPublic" | "profileSlug">>) =>
     request<{ user: User }>("/api/users/me", {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -110,10 +110,19 @@ export const scoresApi = {
   },
   getRank:    (userId: string) => request<RankResponse>(`/api/scores/rank/${userId}`),
   getHistory: (userId: string) => request<{ history: ScoreHistory[] }>(`/api/scores/history/${userId}`),
-  /** Public read-only dashboard payload — no auth; respects user.isPublic on server */
-  getPublicProfile: (userId: string) => publicRequest<MyScoreResponse>(`/api/scores/public/${userId}`),
-  /** History is already public by userId on the API */
-  getPublicHistory: (userId: string) => publicRequest<{ history: ScoreHistory[] }>(`/api/scores/history/${userId}`),
+  /**
+   * Public read-only dashboard — no auth. Pass includeHistory to merge last 90 snapshots in one request
+   * (avoids a second HTTP call and duplicate DB work on the server).
+   */
+  getPublicProfile: (profileKey: string, opts?: { includeHistory?: boolean }) => {
+    const q = opts?.includeHistory ? "?includeHistory=1" : "";
+    return publicRequest<MyScoreResponse & { history?: ScoreHistory[] }>(
+      `/api/scores/public/${encodeURIComponent(profileKey)}${q}`
+    );
+  },
+  /** Standalone history (e.g. tools); prefer getPublicProfile(..., { includeHistory: true }) for /u pages */
+  getPublicHistory: (profileKey: string) =>
+    publicRequest<{ history: ScoreHistory[] }>(`/api/scores/history/${encodeURIComponent(profileKey)}`),
   refresh:    () => request<{ success: boolean; message: string }>("/api/scores/refresh", { method: "POST" }),
 };
 
@@ -129,6 +138,8 @@ export interface User {
   githubLogin: string | null;
   createdAt: string;
   isPublic: boolean;
+  /** Pretty public URL under /u/:slug — optional; UUID always works */
+  profileSlug: string | null;
 }
 
 export interface PlatformProfile {
@@ -233,9 +244,14 @@ export interface LeaderboardEntry {
   githubLogin: string | null;
   score: number;
   topPercent: string;
+  /** false = no public /u/ page for others */
+  isPublic: boolean;
+  profileSlug: string | null;
   codeforcesScore?: number;
   leetcodeScore?: number;
   githubScore?: number;
+  atcoderScore?: number;
+  gfgScore?: number;
 }
 
 export interface LeaderboardResponse {
@@ -257,7 +273,7 @@ export interface ScoreHistory {
 }
 
 export interface PublicUserProfile {
-  user: Pick<User, "id" | "displayName" | "avatarUrl" | "githubLogin" | "createdAt">;
+  user: Pick<User, "id" | "displayName" | "avatarUrl" | "githubLogin" | "profileSlug" | "createdAt">;
   platforms: { platform: string; username: string | null }[];
   scoreSnapshot: { compositeScore: number; computedAt: string } | null;
 }

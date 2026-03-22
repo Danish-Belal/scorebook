@@ -49,10 +49,10 @@ Until then, you can run **`npm run dev:all`** (see [SETUP.md](./SETUP.md)) and g
 - **Sign up / sign in** — Email & password or **Google** / **GitHub** OAuth  
 - **Connect platforms** — Paste profile URLs (or bulk); we detect the platform and store your public stats  
 - **Dashboard** — Composite score, per-platform breakdown, fairness context, and optional titles/badges derived from your ratings and activity  
-- **Leaderboard** — Browse ranked developers (global and per-platform views where supported)  
+- **Leaderboard** — Browse ranked developers (global and per-platform views); **click any row** to open that person’s **public score profile** (same read-only view as a shared `/u/…` link). Works signed in or not. Private profiles show a lock (no link).  
 - **Refresh** — Re-fetch data and recompute your score when you’ve improved externally  
 - **Score history** — Trend data for charts (snapshots over time)  
-- **Shareable public profile** — Copy a link like **`/u/<your-user-id>`** (from the dashboard). Anyone can open it **without signing in** and see your scores and history (read-only; no refresh/sync). Profiles respect **`isPublic`** on your account (`PATCH /api/users/me`).
+- **Shareable public profile** — Copy a link from the dashboard (**`/u/<slug>`** or **`/u/<uuid>`**). Set an optional **slug** under **Settings** (e.g. `jane-doe`). Anyone can open it **without signing in** and see scores + history (read-only). Toggle **public profile** in **Settings** (`PATCH /api/users/me` with `isPublic` / `profileSlug`).
 
 Supported platforms include **competitive programming** and **engineering** signals (e.g. Codeforces, LeetCode, CodeChef, AtCoder, and others), plus breadth sources — see the app’s connect flow for the live list.
 
@@ -135,6 +135,8 @@ Production checklist: **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)**.
 | `npm run worker:*` | Fetch, score, refresh, snapshot workers |
 | `npm run test:unit` | Unit tests (scoring + helpers) |
 | `npm run migrate` | Apply DB schema (Drizzle) |
+| `npm run db:ensure-profile-slug` | Adds `users.profile_slug` if missing (fixes `column "profile_slug" does not exist`) |
+| `npm run smoke:api` | Quick HTTP checks (start API with `npm run dev` first) |
 
 ---
 

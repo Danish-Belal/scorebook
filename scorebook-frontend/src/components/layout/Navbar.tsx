@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Trophy, LayoutDashboard, Users, Plus, LogOut, Menu, X } from "lucide-react";
+import { Trophy, LayoutDashboard, Users, Plus, LogOut, Menu, X, Settings } from "lucide-react";
 import { authApi, User, ApiError } from "@/lib/api";
 import AvatarImg from "@/components/AvatarImg";
 import { toast } from "sonner";
@@ -46,6 +46,9 @@ export default function Navbar() {
     { href: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
     { href: "/leaderboard", label: "Leaderboard", icon: Users },
     { href: "/connect",     label: "Add Platform",icon: Plus },
+    ...(user
+      ? ([{ href: "/settings", label: "Settings", icon: Settings }] as const)
+      : []),
   ];
 
   return (

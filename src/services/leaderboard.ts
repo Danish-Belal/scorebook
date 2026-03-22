@@ -1,7 +1,8 @@
 import { redis, LEADERBOARD_KEY, platformLeaderboardKey } from "../config/redis";
 import { db } from "../config/database";
 import { users, scores } from "../models/schema";
-import { inArray, eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
+import { topPercentLabel } from "../utils/topPercentLabel";
 
 export interface LeaderboardEntry {
   rank:           number;
@@ -11,6 +12,9 @@ export interface LeaderboardEntry {
   githubLogin:    string | null;
   score:          number;
   topPercent:     string;   // e.g. "Top 10%"
+  /** When false, public /u/… profile is hidden — leaderboard row should not link for others */
+  isPublic:       boolean;
+  profileSlug:    string | null;
   codeforcesScore?: number;
   leetcodeScore?:   number;
   githubScore?:     number;
@@ -70,7 +74,9 @@ export async function getLeaderboard(
       avatarUrl:      user?.avatarUrl ?? null,
       githubLogin:    user?.githubLogin ?? null,
       score:          scoreMap.get(userId) ?? 0,
-      topPercent:     leaderboardTopPercent(start + idx, totalUsers),
+      topPercent:     topPercentLabel(start + idx, totalUsers),
+      isPublic:       user?.isPublic !== false,
+      profileSlug:    user?.profileSlug ?? null,
       codeforcesScore: scoreDb?.codeforcesScore ? parseFloat(scoreDb.codeforcesScore) : undefined,
       leetcodeScore:   scoreDb?.leetcodeScore   ? parseFloat(scoreDb.leetcodeScore)   : undefined,
       githubScore:     scoreDb?.githubScore      ? parseFloat(scoreDb.githubScore)     : undefined,
@@ -120,26 +126,20 @@ export async function getUserRankWithNeighbors(userId: string): Promise<{
     .where(inArray(users.id, userIds));
   const userMap = new Map(userRows.map((u) => [u.id, u]));
 
-  const neighbors: LeaderboardEntry[] = userIds.map((uid, idx) => ({
-    rank:        start + idx + 1,
-    userId:      uid,
-    displayName: userMap.get(uid)?.displayName ?? "Unknown",
-    avatarUrl:   userMap.get(uid)?.avatarUrl ?? null,
-    githubLogin: userMap.get(uid)?.githubLogin ?? null,
-    score:       scoreMap.get(uid) ?? 0,
-    topPercent:  leaderboardTopPercent(start + idx, totalUsers),
-  }));
+  const neighbors: LeaderboardEntry[] = userIds.map((uid, idx) => {
+    const u = userMap.get(uid);
+    return {
+      rank:        start + idx + 1,
+      userId:      uid,
+      displayName: u?.displayName ?? "Unknown",
+      avatarUrl:   u?.avatarUrl ?? null,
+      githubLogin: u?.githubLogin ?? null,
+      score:       scoreMap.get(uid) ?? 0,
+      topPercent:  topPercentLabel(start + idx, totalUsers),
+      isPublic:    u?.isPublic !== false,
+      profileSlug: u?.profileSlug ?? null,
+    };
+  });
 
   return { rank, totalUsers, neighbors };
-}
-
-function leaderboardTopPercent(rank0: number, total: number): string {
-  if (total === 0) return "Top 100%";
-  const pct = ((rank0 + 1) / total) * 100;
-  if (pct <= 1)  return "Top 1%";
-  if (pct <= 5)  return "Top 5%";
-  if (pct <= 10) return "Top 10%";
-  if (pct <= 25) return "Top 25%";
-  if (pct <= 50) return "Top 50%";
-  return "Top 75%";
 }

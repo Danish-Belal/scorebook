@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Trophy, TrendingUp, Activity, Plus, ExternalLink, AlertCircle, CheckCircle, Clock, ChevronRight, Loader2, Link2, Check } from "lucide-react";
 import { scoresApi, platformsApi, MyScoreResponse, PlatformStatus, ScoreHistory, authApi, ScoreQueueStatusResponse, ApiError, User } from "@/lib/api";
 import { PLATFORMS, PlatformKey, getScoreColor, getRankBadge, timeAgo } from "@/lib/constants";
+import { publicProfileShareUrl } from "@/lib/publicProfilePath";
 import Navbar from "@/components/layout/Navbar";
 import { ScoreRing, PlatformCard, HistoryChart } from "@/components/dashboard/DashboardVisuals";
 import { toast } from "sonner";
@@ -510,14 +511,25 @@ export default function DashboardPage() {
     const id = sessionUser?.id;
     if (!id || typeof window === "undefined") return;
     if (sessionUser?.isPublic === false) {
-      toast.error("Your profile is set to private. Enable a public profile to share (update isPublic via account settings).");
+      toast.error("Your profile is private. Turn on public profile in Settings to share.", {
+        action: { label: "Settings", onClick: () => router.push("/settings") },
+      });
       return;
     }
-    const url = `${window.location.origin}/u/${id}`;
+    const url = publicProfileShareUrl(window.location.origin, {
+      userId: id,
+      profileSlug: sessionUser.profileSlug,
+      isPublic: sessionUser.isPublic,
+    });
+    if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
       setShareCopied(true);
-      toast.success("Public profile link copied — anyone can open it without signing in.");
+      toast.success(
+        sessionUser?.profileSlug?.trim()
+          ? "Pretty profile link copied — no login needed for viewers."
+          : "Public profile link copied — no login needed. Set a short URL in Settings."
+      );
       window.setTimeout(() => setShareCopied(false), 2200);
     } catch {
       toast.error("Could not copy — copy manually: " + url);

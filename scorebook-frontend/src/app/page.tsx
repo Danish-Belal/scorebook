@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Trophy, Zap, GitBranch, Shield, ChevronRight, Users, Activity, Award, LayoutDashboard, Plus } from "lucide-react";
 import { scoresApi, LeaderboardEntry, authApi, User } from "@/lib/api";
 import { PLATFORMS } from "@/lib/constants";
+import { publicProfileHrefFromEntry } from "@/lib/publicProfilePath";
 import Navbar from "@/components/layout/Navbar";
 import AvatarImg from "@/components/AvatarImg";
 
@@ -117,29 +118,54 @@ export default function LandingPage() {
                 <div className="grid grid-cols-4 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-white/5">
                   <span>Rank</span><span>Developer</span><span>Score</span><span>Standing</span>
                 </div>
-                {topUsers.map((user, i) => (
-                  <motion.div key={user.userId}
-                    initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 * i }}
-                    className="grid grid-cols-4 px-6 py-4 items-center border-b border-white/3 last:border-0 hover:bg-white/2 transition-colors">
-                    <div className="font-mono font-bold text-sm">
-                      {user.rank === 1 ? "👑" : user.rank === 2 ? "🥈" : user.rank === 3 ? "🥉" : `#${user.rank}`}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <AvatarImg src={user.avatarUrl} name={user.displayName} className="w-8 h-8" />
-                      <div>
-                        <p className="text-sm font-medium text-white">{user.displayName}</p>
-                        {user.githubLogin && <p className="text-xs text-slate-500">@{user.githubLogin}</p>}
+                {topUsers.map((lbEntry, i) => {
+                  const href = publicProfileHrefFromEntry(lbEntry, "home");
+                  const row = (
+                    <>
+                      <div className="font-mono font-bold text-sm">
+                        {lbEntry.rank === 1 ? "👑" : lbEntry.rank === 2 ? "🥈" : lbEntry.rank === 3 ? "🥉" : `#${lbEntry.rank}`}
                       </div>
-                    </div>
-                    <div className="font-mono font-bold text-lg text-brand-400">{user.score.toFixed(1)}</div>
-                    <div>
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full bg-brand-500/15 text-brand-400 border border-brand-500/25">
-                        {user.topPercent}
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <AvatarImg src={lbEntry.avatarUrl} name={lbEntry.displayName} className="w-8 h-8 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{lbEntry.displayName}</p>
+                          {lbEntry.githubLogin && (
+                            <p className="text-xs text-slate-500 truncate">@{lbEntry.githubLogin}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="font-mono font-bold text-lg text-brand-400">{lbEntry.score.toFixed(1)}</div>
+                      <div>
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-brand-500/15 text-brand-400 border border-brand-500/25">
+                          {lbEntry.topPercent}
+                        </span>
+                      </div>
+                    </>
+                  );
+                  return (
+                    <motion.div
+                      key={lbEntry.userId}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 * i }}
+                      className="border-b border-white/3 last:border-0"
+                    >
+                      {href ? (
+                        <Link
+                          href={href}
+                          className="grid grid-cols-4 px-6 py-4 items-center hover:bg-white/[0.04] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                          aria-label={`View ${lbEntry.displayName} public profile`}
+                        >
+                          {row}
+                        </Link>
+                      ) : (
+                        <div className="grid grid-cols-4 px-6 py-4 items-center hover:bg-white/2 transition-colors opacity-80">
+                          {row}
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                })}
                 <div className="px-6 py-4 text-center">
                   <Link href="/leaderboard" className="text-sm text-brand-400 hover:text-brand-300 transition-colors font-medium">
                     View full leaderboard →

@@ -1,21 +1,29 @@
 import { Router, Response, Request } from "express";
 import { z } from "zod";
-import { requireAuth, AuthRequest } from "../middleware/auth";
+import { requireAuth, AuthRequest, optionalAuth } from "../middleware/auth";
 import { refreshLimiter } from "../middleware/rateLimit";
 import { validateQuery } from "../middleware/validate";
 import { db } from "../config/database";
-import { scores, scoresHistory, platformData, platformSpotlights } from "../models/schema";
+import { scores, scoresHistory, platformData } from "../models/schema";
 import { eq, desc } from "drizzle-orm";
 import { getLeaderboard, getUserRankWithNeighbors } from "../services/leaderboard";
 import { enqueueScore } from "../workers/queues";
 import { redis, LEADERBOARD_KEY } from "../config/redis";
 import { getScoreQueueJobStatus } from "../services/scoreQueueStatus";
 import { loadScoreDashboardPayload } from "../services/scoreDashboardPayload";
-import { users } from "../models/schema";
+import { resolveProfileUser } from "../services/profileKey";
+
+/** One place for the “last 90 snapshots” query — public bundle + history route */
+function recentScoresHistoryForUser(userId: string) {
+  return db
+    .select()
+    .from(scoresHistory)
+    .where(eq(scoresHistory.userId, userId))
+    .orderBy(desc(scoresHistory.snapshotDate))
+    .limit(90);
+}
 
 const router = Router();
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const leaderboardQuerySchema = z.object({
   page:     z.coerce.number().min(1).default(1),
@@ -23,23 +31,33 @@ const leaderboardQuerySchema = z.object({
   platform: z.enum(["codeforces","leetcode","codechef","atcoder","hackerrank","hackerearth","topcoder","gfg","github"]).optional(),
 });
 
-// GET /scores/public/:userId — read-only dashboard payload (no auth). Requires public profile.
+// GET /scores/public/:profileKey — read-only dashboard (no auth). UUID or profile_slug; requires public profile.
+// ?includeHistory=1 — attach score history in one response (avoids a second resolve + HTTP round-trip).
 router.get("/public/:userId", async (req: Request, res: Response) => {
-  const userId = req.params.userId;
-  if (!UUID_RE.test(userId)) {
-    res.status(400).json({ error: "Invalid profile id" });
+  const user = await resolveProfileUser(req.params.userId);
+  if (!user) {
+    res.status(400).json({ error: "Invalid profile id or slug" });
     return;
   }
-
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.isPublic === false) {
+  if (user.isPublic === false) {
     res.status(404).json({ error: "Profile not found or private" });
     return;
   }
 
-  const payload = await loadScoreDashboardPayload(userId);
+  const payload = await loadScoreDashboardPayload(user.id, { user });
   if (!payload) {
     res.status(404).json({ error: "Profile not found" });
+    return;
+  }
+
+  const wantHistory =
+    req.query.includeHistory === "1" ||
+    req.query.includeHistory === "true" ||
+    req.query.includeHistory === "yes";
+
+  if (wantHistory) {
+    const history = await recentScoresHistoryForUser(user.id);
+    res.json({ ...payload, history });
     return;
   }
 
@@ -70,12 +88,21 @@ router.get("/rank/:userId", async (req: Request, res: Response) => {
   res.json(result);
 });
 
-// GET /scores/history/:userId
-router.get("/history/:userId", async (req: Request, res: Response) => {
-  const history = await db.select().from(scoresHistory)
-    .where(eq(scoresHistory.userId, req.params.userId))
-    .orderBy(desc(scoresHistory.snapshotDate))
-    .limit(90);
+// GET /scores/history/:profileKey — UUID or slug. Private profiles: only owner (cookie) or public.
+router.get("/history/:userId", optionalAuth, async (req: Request, res: Response) => {
+  const user = await resolveProfileUser(req.params.userId);
+  if (!user) {
+    res.status(400).json({ error: "Invalid profile id or slug" });
+    return;
+  }
+  const viewerId = (req as Request & { _userId?: string })._userId;
+  const canView = user.isPublic !== false || viewerId === user.id;
+  if (!canView) {
+    res.status(404).json({ error: "Profile not found or private" });
+    return;
+  }
+
+  const history = await recentScoresHistoryForUser(user.id);
   res.json({ history });
 });
 

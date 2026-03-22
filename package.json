@@ -19,8 +19,10 @@
     "worker:snapshot:prod": "node dist/workers/snapshotWorker.js",
     "diagnose:score": "ts-node --transpile-only scripts/diagnose-score.ts",
     "migrate": "drizzle-kit push",
+    "db:ensure-profile-slug": "ts-node --transpile-only scripts/ensure-profile-slug-column.ts",
     "test": "jest",
-    "test:unit": "jest tests/unit --passWithNoTests"
+    "test:unit": "jest tests/unit --passWithNoTests",
+    "smoke:api": "ts-node --transpile-only scripts/smoke-api.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.9.3",

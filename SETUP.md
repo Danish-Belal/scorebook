@@ -124,7 +124,15 @@ Users can also **sign up and sign in with email + password** from the frontend (
 
 Both set the same `token` httpOnly cookie as GitHub/Google OAuth. OAuth-only accounts have no password; use **Sign in with GitHub/Google** for those.
 
-After `npm run migrate`, the `users` table includes a nullable `password_hash` column.
+After `npm run migrate`, the `users` table includes a nullable `password_hash` column and an optional unique **`profile_slug`** for pretty public URLs (`/u/your-handle` in the app).
+
+**If the API logs `column "profile_slug" does not exist`:** your DB predates that field. From the repo root (with `DATABASE_URL` in `.env`):
+
+```bash
+npm run db:ensure-profile-slug
+```
+
+Or run **`npm run migrate`** again, or paste `drizzle/0001_profile_slug.sql` into the Neon SQL editor.
 
 ---
 
@@ -147,6 +155,17 @@ This starts together:
 | `web` | Next.js frontend → http://localhost:3000 |
 
 Press **Ctrl+C** once to stop all processes.
+
+### Next.js: `MODULE_NOT_FOUND` (e.g. `vendor-chunks/framer-motion.js`) or `/_next/static/...` 404
+
+Usually a **stale or half-written `.next` cache** (often after a failed compile or hot reload). **Stop** `dev:all`, then:
+
+```bash
+cd scorebook-frontend && npm run clean && cd ..
+npm run dev:all
+```
+
+If `npm run clean` fails because files are locked, stop every Node process using that folder, delete `scorebook-frontend/.next` manually, and start again.
 
 ### Ports must be free: **3000** (Next.js) and **3001** (API)
 

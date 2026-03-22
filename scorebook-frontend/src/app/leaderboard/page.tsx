@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Trophy, Search, ChevronLeft, ChevronRight, Lock, ExternalLink } from "lucide-react";
 import { scoresApi, LeaderboardEntry, authApi, User, ApiError, RankResponse } from "@/lib/api";
 import { formatScore, getScoreColor } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
 import AvatarImg from "@/components/AvatarImg";
+import { publicProfileHrefFromEntry } from "@/lib/publicProfilePath";
 
 const PLATFORM_FILTERS = [
   { value: "",            label: "Overall" },
@@ -78,6 +80,13 @@ export default function LeaderboardPage() {
     return { icon: `#${rank}`, cls: "text-slate-400 font-mono text-sm" };
   };
 
+  const mePublicHref = me
+    ? publicProfileHrefFromEntry(
+        { userId: me.id, profileSlug: me.profileSlug, isPublic: me.isPublic },
+        "leaderboard"
+      )
+    : null;
+
   return (
     <div className="min-h-screen mesh-bg">
       <Navbar />
@@ -91,7 +100,11 @@ export default function LeaderboardPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Global Leaderboard</h1>
-              <p className="text-slate-500 text-sm">{total} developers ranked</p>
+              <p className="text-slate-500 text-sm">
+                {total} developers ranked
+                <span className="text-slate-600"> · </span>
+                <span className="text-slate-400">Click a row to open their public score profile</span>
+              </p>
             </div>
           </div>
         </motion.div>
@@ -112,7 +125,17 @@ export default function LeaderboardPage() {
               />
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-400/90">You</p>
-                <p className="text-lg font-bold text-white truncate">{me.displayName}</p>
+                {mePublicHref ? (
+                  <Link
+                    href={mePublicHref}
+                    className="text-lg font-bold text-white truncate hover:text-brand-300 transition-colors inline-flex items-center gap-1.5 group"
+                  >
+                    <span className="truncate">{me.displayName}</span>
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-60" aria-hidden />
+                  </Link>
+                ) : (
+                  <p className="text-lg font-bold text-white truncate">{me.displayName}</p>
+                )}
                 {myRank ? (
                   <p className="text-sm text-slate-400 mt-0.5">
                     Overall rank{" "}
@@ -215,56 +238,60 @@ export default function LeaderboardPage() {
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 {filtered.map((entry, i) => {
                   const { icon, cls } = getRankDisplay(entry.rank);
-                  return (
-                    <motion.div key={entry.userId}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className={`grid grid-cols-12 px-6 py-4 items-center border-b border-white/3 last:border-0 hover:bg-white/2 transition-colors ${
-                        entry.rank <= 3 ? "bg-gradient-to-r from-yellow-500/3 to-transparent" : ""
-                      } ${
-                        me?.id === entry.userId
-                          ? "ring-1 ring-inset ring-brand-500/50 bg-brand-500/5"
-                          : ""
-                      }`}>
+                  const profileHref = publicProfileHrefFromEntry(entry, "leaderboard");
+                  const rowTone = `${
+                    entry.rank <= 3 ? "bg-gradient-to-r from-yellow-500/3 to-transparent" : ""
+                  } ${
+                    me?.id === entry.userId ? "ring-1 ring-inset ring-brand-500/50 bg-brand-500/5" : ""
+                  } ${
+                    profileHref ? "hover:bg-white/[0.04]" : "hover:bg-white/2"
+                  }`;
 
-                      {/* Rank */}
+                  const rowInner = (
+                    <>
                       <div className={`col-span-1 text-xl font-bold ${cls}`}>{icon}</div>
-
-                      {/* Developer */}
-                      <div className="col-span-5 flex items-center gap-3">
-                        <AvatarImg src={entry.avatarUrl} name={entry.displayName} className="w-9 h-9" />
-                        <div>
+                      <div className="col-span-5 flex items-center gap-3 min-w-0">
+                        <AvatarImg src={entry.avatarUrl} name={entry.displayName} className="w-9 h-9 shrink-0" />
+                        <div className="min-w-0">
                           <p className="text-sm font-semibold text-white flex items-center gap-2 flex-wrap">
-                            {entry.displayName}
+                            <span className="truncate">{entry.displayName}</span>
                             {me?.id === entry.userId && (
-                              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-brand-500/25 text-brand-300 border border-brand-500/35">
+                              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-brand-500/25 text-brand-300 border border-brand-500/35 shrink-0">
                                 You
                               </span>
                             )}
+                            {!profileHref && (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[10px] font-medium text-slate-500 shrink-0"
+                                title="This developer’s score profile is private"
+                              >
+                                <Lock className="w-3 h-3" />
+                                Private
+                              </span>
+                            )}
+                            {profileHref && (
+                              <ExternalLink
+                                className="w-3.5 h-3.5 text-slate-500 opacity-60"
+                                aria-hidden
+                              />
+                            )}
                           </p>
                           {entry.githubLogin ? (
-                            <p className="text-xs text-slate-500">@{entry.githubLogin}</p>
+                            <p className="text-xs text-slate-500 truncate">@{entry.githubLogin}</p>
                           ) : (
                             <p className="text-xs text-slate-600">ScoreBook member</p>
                           )}
                         </div>
                       </div>
-
-                      {/* Score */}
                       <div className={`col-span-2 text-right font-black font-mono text-lg ${getScoreColor(entry.score)}`}>
                         {formatScore(entry.score)}
                       </div>
-
-                      {/* Top % */}
                       <div className="col-span-2 text-right">
                         <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-brand-500/15 text-brand-400 border border-brand-500/25">
                           {entry.topPercent}
                         </span>
                       </div>
-
-                      {/* Platform scores */}
-                      <div className="col-span-2 flex items-center justify-end gap-1.5">
+                      <div className="col-span-2 flex items-center justify-end gap-1.5 flex-wrap">
                         {entry.codeforcesScore != null && (
                           <div title={`CF: ${entry.codeforcesScore.toFixed(1)}`}
                             className="text-xs px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-mono">
@@ -284,6 +311,30 @@ export default function LeaderboardPage() {
                           </div>
                         )}
                       </div>
+                    </>
+                  );
+
+                  return (
+                    <motion.div
+                      key={entry.userId}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="border-b border-white/3 last:border-0"
+                    >
+                      {profileHref ? (
+                        <Link
+                          href={profileHref}
+                          className={`grid grid-cols-12 px-6 py-4 items-center transition-colors ${rowTone} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40 rounded-lg`}
+                          aria-label={`View ${entry.displayName}'s public score profile`}
+                        >
+                          {rowInner}
+                        </Link>
+                      ) : (
+                        <div className={`grid grid-cols-12 px-6 py-4 items-center transition-colors ${rowTone}`}>
+                          {rowInner}
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}

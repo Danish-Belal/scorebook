@@ -11,6 +11,7 @@ declare global {
       githubLogin: string | null;
       createdAt: Date | null;
       isPublic: boolean | null;
+      profileSlug: string | null;
     }
   }
 }
