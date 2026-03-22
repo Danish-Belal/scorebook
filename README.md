@@ -51,7 +51,8 @@ Until then, you can run **`npm run dev:all`** (see [SETUP.md](./SETUP.md)) and g
 - **Dashboard** — Composite score, per-platform breakdown, fairness context, and optional titles/badges derived from your ratings and activity  
 - **Leaderboard** — Browse ranked developers (global and per-platform views where supported)  
 - **Refresh** — Re-fetch data and recompute your score when you’ve improved externally  
-- **Score history** — Trend data for charts (snapshots over time)
+- **Score history** — Trend data for charts (snapshots over time)  
+- **Shareable public profile** — Copy a link like **`/u/<your-user-id>`** (from the dashboard). Anyone can open it **without signing in** and see your scores and history (read-only; no refresh/sync). Profiles respect **`isPublic`** on your account (`PATCH /api/users/me`).
 
 Supported platforms include **competitive programming** and **engineering** signals (e.g. Codeforces, LeetCode, CodeChef, AtCoder, and others), plus breadth sources — see the app’s connect flow for the live list.
 

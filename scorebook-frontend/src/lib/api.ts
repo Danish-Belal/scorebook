@@ -29,6 +29,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+/** No cookies — for public profile pages viewable without auth */
+async function publicRequest<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new ApiError(res.status, err.error || "Request failed");
+  }
+  return res.json();
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -98,6 +110,10 @@ export const scoresApi = {
   },
   getRank:    (userId: string) => request<RankResponse>(`/api/scores/rank/${userId}`),
   getHistory: (userId: string) => request<{ history: ScoreHistory[] }>(`/api/scores/history/${userId}`),
+  /** Public read-only dashboard payload — no auth; respects user.isPublic on server */
+  getPublicProfile: (userId: string) => publicRequest<MyScoreResponse>(`/api/scores/public/${userId}`),
+  /** History is already public by userId on the API */
+  getPublicHistory: (userId: string) => publicRequest<{ history: ScoreHistory[] }>(`/api/scores/history/${userId}`),
   refresh:    () => request<{ success: boolean; message: string }>("/api/scores/refresh", { method: "POST" }),
 };
 
