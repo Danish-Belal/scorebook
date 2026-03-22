@@ -4,3 +4,6 @@ dist/
 migrations/*.sql
 *.log
 .DS_Store
+
+# Human-facing guides live under docs/ — keep them in git (do not ignore).
+# Index: docs/README.md

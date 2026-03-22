@@ -5,7 +5,8 @@ export const logger = winston.createLogger({
   level: env.NODE_ENV === "production" ? "info" : "debug",
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
+    // Stack traces only in non-production server logs
+    winston.format.errors({ stack: env.NODE_ENV !== "production" }),
     env.NODE_ENV === "production"
       ? winston.format.json()
       : winston.format.combine(

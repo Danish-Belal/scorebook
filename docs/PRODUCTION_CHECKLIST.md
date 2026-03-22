@@ -4,6 +4,8 @@ Use this **before every production deploy** and **before merging large features*
 
 **Repo layout:** backend at repo root (`src/`), frontend in `scorebook-frontend/`.
 
+**Deploy commands & hosting:** **[DEPLOY.md](./DEPLOY.md)** (production logging, env vars, `start:api` + workers + Next `start`).
+
 ---
 
 ## How to use
@@ -53,7 +55,7 @@ Use this **before every production deploy** and **before merging large features*
 - [ ] **Schema changes:** run **`npm run migrate`** (`drizzle-kit push`) against **staging first**, then production; confirm no errors.
 - [ ] **Migrations / deploy order:** if the API expects new columns, deploy DB change **before** or **with** the code that writes them (avoid startup/write failures).
 - [ ] **Backfills:** if the feature needs one-off data fixes, document the script or SQL and run it in a controlled window.
-- [ ] **`scores_history`:** populated by **`scoreUser`** after scoring and by **`snapshotWorker`** (daily + on worker start). If you rely on history charts, ensure the **snapshot worker** runs in prod (see SETUP.md).
+- [ ] **`scores_history`:** populated by **`scoreUser`** after scoring and by **`snapshotWorker`** (daily + on worker start). If you rely on history charts, ensure the **snapshot worker** runs in prod (see [SETUP.md](./SETUP.md)).
 
 ---
 

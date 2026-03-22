@@ -28,10 +28,15 @@ app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
-app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
+// Production: `tiny` (method, URL, status, time) — not `combined` (IP, user-agent, referrer)
+app.use(morgan(env.NODE_ENV === "production" ? "tiny" : "dev"));
 app.use("/api", apiLimiter);
 
 app.get("/health", (_req, res) => {
+  if (env.NODE_ENV === "production") {
+    res.json({ status: "ok" });
+    return;
+  }
   res.json({ status: "ok", service: "scorebook-backend", version: "2.0.0", env: env.NODE_ENV });
 });
 
@@ -50,7 +55,9 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
     { ...serializeError(err), path: req.path, method: req.method },
     userId
   );
-  logger.error("Unhandled error", { error: err.message });
+  if (env.NODE_ENV !== "production") {
+    logger.error("Unhandled error", { error: err.message });
+  }
   res.status(500).json({ error: "Internal server error" });
 });
 
@@ -59,20 +66,24 @@ async function start() {
     await checkDatabaseConnection();
     await checkRedisConnection();
     app.listen(env.PORT, () => {
-      logger.info(`🚀 ScoreBook v2 API → http://localhost:${env.PORT}`);
-      logger.info(`   Platforms supported: Codeforces, LeetCode, CodeChef, AtCoder, HackerRank, HackerEarth, TopCoder, GFG, GitHub`);
-      logger.info(`   OAuth — register these URLs exactly (Google Cloud + GitHub OAuth App):`);
-      logger.info(`     Google redirect: ${env.OAUTH_CALLBACK_BASE_URL}/auth/google/callback`);
-      logger.info(`     GitHub callback: ${env.OAUTH_CALLBACK_BASE_URL}/auth/github/callback`);
-      logger.info(`   CORS origin (must match browser): ${env.FRONTEND_URL}`);
-      logger.info(`   Frontend OAuth links use NEXT_PUBLIC_API_URL → must be this API base (e.g. http://localhost:${env.PORT})`);
-      if (
-        env.GITHUB_CLIENT_ID === "your_github_client_id" ||
-        env.GITHUB_CLIENT_SECRET === "your_github_client_secret"
-      ) {
-        logger.warn(
-          "⚠️  GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET are still .env.example placeholders — GitHub OAuth URLs will use client_id=your_github_client_id and fail. Copy Client ID + Secret from GitHub → Settings → Developer settings → OAuth Apps → your app, then restart the API."
-        );
+      if (env.NODE_ENV === "production") {
+        logger.info("ScoreBook API listening", { port: env.PORT });
+      } else {
+        logger.info(`🚀 ScoreBook v2 API → http://localhost:${env.PORT}`);
+        logger.info(`   Platforms supported: Codeforces, LeetCode, CodeChef, AtCoder, HackerRank, HackerEarth, TopCoder, GFG, GitHub`);
+        logger.info(`   OAuth — register these URLs exactly (Google Cloud + GitHub OAuth App):`);
+        logger.info(`     Google redirect: ${env.OAUTH_CALLBACK_BASE_URL}/auth/google/callback`);
+        logger.info(`     GitHub callback: ${env.OAUTH_CALLBACK_BASE_URL}/auth/github/callback`);
+        logger.info(`   CORS origin (must match browser): ${env.FRONTEND_URL}`);
+        logger.info(`   Frontend OAuth links use NEXT_PUBLIC_API_URL → must be this API base (e.g. http://localhost:${env.PORT})`);
+        if (
+          env.GITHUB_CLIENT_ID === "your_github_client_id" ||
+          env.GITHUB_CLIENT_SECRET === "your_github_client_secret"
+        ) {
+          logger.warn(
+            "⚠️  GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET are still .env.example placeholders — GitHub OAuth URLs will use client_id=your_github_client_id and fail. Copy Client ID + Secret from GitHub → Settings → Developer settings → OAuth Apps → your app, then restart the API."
+          );
+        }
       }
     });
   } catch (err: any) {

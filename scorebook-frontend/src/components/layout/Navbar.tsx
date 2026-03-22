@@ -21,7 +21,7 @@ export default function Navbar() {
       .catch((err) => {
         // 401 = not signed in; anything else (network, 5xx) → same UX: show Sign in
         setUser(null);
-        if (err instanceof ApiError && err.status !== 401) {
+        if (process.env.NODE_ENV === "development" && err instanceof ApiError && err.status !== 401) {
           console.warn("[Navbar] getMe failed:", err.status, err.message);
         }
       })

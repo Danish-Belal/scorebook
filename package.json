@@ -9,6 +9,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:api": "node dist/index.js",
     "worker:fetch": "ts-node-dev --respawn --transpile-only src/workers/fetchWorker.ts",
     "worker:score": "ts-node-dev --respawn --transpile-only src/workers/scoreWorker.ts",
     "worker:refresh": "ts-node-dev --respawn --transpile-only src/workers/refreshWorker.ts",

@@ -57,7 +57,7 @@ router.post("/connect", requireAuth, validateBody(connectSchema), async (req: Au
     });
 
   await enqueueFetch(userId, platform, username);
-  logger.info(`[Platforms] User ${userId} connected ${platform}/${username}`);
+  logger.debug(`[Platforms] User ${userId} connected ${platform}/${username}`);
 
   res.status(202).json({
     success:  true,
@@ -73,7 +73,7 @@ router.post("/sync", requireAuth as RequestHandler, async (req: Request, res: Re
   const userId = (req as AuthRequest).user!.id;
   const { queuedFetches } = await queueFetchesAndScoreForUser(userId);
 
-  logger.info(`[Platforms] User ${userId} triggered sync: ${queuedFetches} fetch(es) + score`);
+  logger.debug(`[Platforms] User ${userId} triggered sync: ${queuedFetches} fetch(es) + score`);
   res.status(202).json({
     success: true,
     queued: queuedFetches,

@@ -177,7 +177,7 @@ router.get(
         }
         try {
           const uid = (user as { id: string }).id;
-          logger.info(`[auth/github] Sign-in OK → userId=${uid}`);
+          logger.debug(`[auth/github] Sign-in OK → userId=${uid}`);
           setAuthCookieAndRedirect(res, uid);
         } catch (e) {
           void logError("auth/github", "Token or redirect failed after OAuth", serializeError(e), (user as { id: string }).id);

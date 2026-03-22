@@ -1,5 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { bullRedisConnection } from "../config/redis";
+import { env } from "../config/env";
 import { scoreUser } from "../services/scoring";
 import { ScoreJobData } from "./queues";
 import { logger } from "../config/logger";
@@ -9,22 +10,31 @@ const worker = new Worker<ScoreJobData>(
   "compute-score",
   async (job: Job<ScoreJobData>) => {
     const { userId } = job.data;
-    logger.info(`[ScoreWorker] Computing score for user ${userId}`);
+    if (env.NODE_ENV !== "production") {
+      logger.info(`[ScoreWorker] Computing score for user ${userId}`);
+    }
     try {
       const { finalScore, response } = await scoreUser(userId);
-      const details = {
-        userId,
-        jobId: job.id,
-        finalScore,
-        response,
-      };
-      logger.info(`[ScoreWorker] RESULT ${JSON.stringify(details)}`);
-      void logInfo(
-        "score",
-        `Score job completed userId=${userId} finalScore=${finalScore}`,
-        details,
-        userId
-      );
+      const summary = { userId, jobId: job.id, finalScore };
+      if (env.NODE_ENV === "production") {
+        logger.info(
+          `[ScoreWorker] completed userId=${userId} jobId=${job.id} finalScore=${finalScore}`
+        );
+        void logInfo(
+          "score",
+          `Score job completed userId=${userId} finalScore=${finalScore}`,
+          summary,
+          userId
+        );
+      } else {
+        logger.info(`[ScoreWorker] RESULT ${JSON.stringify({ ...summary, response })}`);
+        void logInfo(
+          "score",
+          `Score job completed userId=${userId} finalScore=${finalScore}`,
+          { ...summary, response },
+          userId
+        );
+      }
       return { finalScore };
     } catch (err) {
       void logError(
@@ -43,6 +53,7 @@ const worker = new Worker<ScoreJobData>(
 );
 
 worker.on("completed", (job, result) => {
+  if (env.NODE_ENV === "production") return;
   const uid = job.data?.userId;
   logger.info(
     `[ScoreWorker] Job ${job.id} completed userId=${uid ?? "?"} finalScore=${result?.finalScore}`
@@ -60,6 +71,8 @@ worker.on("failed", (job, err) => {
   );
 });
 
-logger.info("🚀 ScoreWorker started");
+if (env.NODE_ENV !== "production") {
+  logger.info("🚀 ScoreWorker started");
+}
 
 export { worker as scoreWorker };

@@ -6,6 +6,9 @@
 
 This repo contains the **backend API** (Node.js + Express) and, in `scorebook-frontend/`, the **Next.js** web app.
 
+**Deploying to production** (env vars, separate commands for API/workers/Next, hosting ideas): see **[docs/DEPLOY.md](./docs/DEPLOY.md)**.  
+**All guides:** **[docs/README.md](./docs/README.md)**.
+
 ---
 
 ## Screenshots
@@ -40,7 +43,7 @@ Drop PNG or WebP captures into [`docs/screenshots/`](./docs/screenshots/) and un
 <p align="center"><b>Connect</b> — link Codeforces, LeetCode, GitHub, and more</p>
 ```
 
-Until then, you can run **`npm run dev:all`** (see [SETUP.md](./SETUP.md)) and grab captures locally.
+Until then, you can run **`npm run dev:all`** (see [docs/SETUP.md](./docs/SETUP.md)) and grab captures locally.
 
 ---
 
@@ -110,7 +113,7 @@ The product aims to show **enough detail** that you understand *why* your score 
 
 ## Getting started
 
-Full local setup (env vars, migrations, workers, ports) is in **[SETUP.md](./SETUP.md)**.
+Full local setup (env vars, migrations, workers, ports) is in **[docs/SETUP.md](./docs/SETUP.md)**.
 
 Quick pointers:
 
@@ -121,7 +124,7 @@ npm run migrate
 npm run dev              # API only — see SETUP for workers + frontend
 ```
 
-Production checklist: **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)**.
+Production checklist: **[docs/PRODUCTION_CHECKLIST.md](./docs/PRODUCTION_CHECKLIST.md)**.
 
 ---
 
@@ -131,8 +134,9 @@ Production checklist: **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)**.
 |--------|---------|
 | `npm run dev` | API dev server |
 | `npm run dev:all` | API + workers + frontend (see SETUP) |
-| `npm run build` / `npm start` | Production compile / run API |
-| `npm run worker:*` | Fetch, score, refresh, snapshot workers |
+| `npm run build` / `npm start` or `npm run start:api` | Production compile / run API only |
+| `npm run worker:*` | Dev workers (TypeScript) |
+| `npm run worker:*:prod` | Production workers (`node dist/workers/…`) — see **docs/DEPLOY.md** |
 | `npm run test:unit` | Unit tests (scoring + helpers) |
 | `npm run migrate` | Apply DB schema (Drizzle) |
 | `npm run db:ensure-profile-slug` | Adds `users.profile_slug` if missing (fixes `column "profile_slug" does not exist`) |
