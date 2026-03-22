@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Trophy, GitBranch } from "lucide-react";
-import { BASE_URL } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 export const authFieldClass =
   "w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-brand-500/60 focus:bg-white/8 transition-all";
@@ -59,14 +59,14 @@ export default function AuthShell({ title, subtitle, children, footer }: Props) 
 
             <div className="space-y-3">
               <a
-                href={`${BASE_URL}/auth/github`}
+                href={authApi.githubUrl()}
                 className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/15 transition-all text-white"
               >
                 <GitBranch className="w-4 h-4" />
                 GitHub
               </a>
               <a
-                href={`${BASE_URL}/auth/google`}
+                href={authApi.googleUrl()}
                 className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/15 transition-all text-white"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden>

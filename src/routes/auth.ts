@@ -7,6 +7,7 @@ import { authLimiter } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { env } from "../config/env";
 import { logError, serializeError } from "../services/errorLogger";
+import { logger } from "../config/logger";
 import { db } from "../config/database";
 import { users } from "../models/schema";
 import { eq } from "drizzle-orm";
@@ -143,11 +144,24 @@ router.get(
 router.get(
   "/github/callback",
   (req: Request, res: Response, next: NextFunction) => {
+    // GitHub redirects here with ?error=... when user denies or app misconfigured
+    const qErr = req.query.error;
+    if (typeof qErr === "string") {
+      const desc = req.query.error_description;
+      const msg = typeof desc === "string" ? `${qErr}: ${desc}` : qErr;
+      logger.warn(`[auth/github] Callback query error — ${msg}`);
+      void logError("auth/github", `GitHub OAuth callback query: ${qErr}`, {
+        error_description: typeof desc === "string" ? desc : undefined,
+      });
+      return res.redirect(`${env.FRONTEND_URL}/auth/error`);
+    }
+
     passport.authenticate(
       "github",
       { session: false },
       (err: Error | undefined, user: Express.User | false, info: object | string | Array<string> | undefined) => {
         if (err) {
+          logger.warn(`[auth/github] Passport error — ${err.message}`);
           void logError("auth/github", err.message || "GitHub OAuth error", {
             ...serializeError(err),
             info,
@@ -155,13 +169,16 @@ router.get(
           return res.redirect(`${env.FRONTEND_URL}/auth/error`);
         }
         if (!user || typeof user !== "object" || !("id" in user)) {
+          logger.warn("[auth/github] Passport returned no user");
           void logError("auth/github", "OAuth failed: no user returned", {
             info: info != null ? String(info) : undefined,
           });
           return res.redirect(`${env.FRONTEND_URL}/auth/error`);
         }
         try {
-          setAuthCookieAndRedirect(res, (user as { id: string }).id);
+          const uid = (user as { id: string }).id;
+          logger.info(`[auth/github] Sign-in OK → userId=${uid}`);
+          setAuthCookieAndRedirect(res, uid);
         } catch (e) {
           void logError("auth/github", "Token or redirect failed after OAuth", serializeError(e), (user as { id: string }).id);
           return res.redirect(`${env.FRONTEND_URL}/auth/error`);

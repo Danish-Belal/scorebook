@@ -56,10 +56,13 @@ and three commands.
 
 1. Go to https://console.cloud.google.com
 2. Create a new project called `ScoreBook`
-3. Go to **APIs & Services** → **Credentials** → **Create Credentials** → **OAuth client ID**
-4. Application type: **Web application**
-5. Add `http://localhost:3001/auth/google/callback` under Authorized redirect URIs
-6. Copy **Client ID** and **Client Secret**
+3. Go to **APIs & Services** → **OAuth consent screen** → choose **External** (dev) → add yourself as a **Test user** if the app stays in *Testing* (otherwise only test users can sign in).
+4. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
+5. Application type: **Web application** (not iOS/Android — those IDs cause **Error 401: invalid_client** with Passport).
+6. Under **Authorized JavaScript origins**, add: `http://localhost:3001` (same host/port as your API — no path).
+7. Under **Authorized redirect URIs**, add **exactly** (must match `OAUTH_CALLBACK_BASE_URL` in `.env`, no double slashes, `localhost` vs `127.0.0.1` must match):
+   - `http://localhost:3001/auth/google/callback`
+8. Copy **Client ID** and **Client Secret** into `.env` with **no spaces** or quotes. Regenerate the secret if you ever paste it wrong.
 
 ---
 
@@ -82,6 +85,15 @@ Open `.env` and fill in:
 - `JWT_SECRET` — generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 - `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` — from Step 3
 - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — from Step 4
+- `OAUTH_CALLBACK_BASE_URL` — usually `http://localhost:3001` (API origin). Must match the **callback / redirect URLs** you registered on GitHub and Google **character-for-character** (scheme, host, port, path). Trailing slashes are stripped by the app, but do not rely on mismatched hosts (`localhost` ≠ `127.0.0.1`).
+
+**Frontend (`scorebook-frontend/.env.local`):** copy `.env.local.example` → `.env.local` and set:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
+
+OAuth buttons link to **`NEXT_PUBLIC_API_URL` + `/auth/github` or `/auth/google`**. If this points at the **Next.js port (3000)** or is unset incorrectly, the browser hits Next.js → **404 Page not found**. It must be the **Express API** base URL (default **3001**).
 
 ---
 
@@ -158,6 +170,20 @@ Then run `npm run dev:all` again. You should see **`api`** listening on **3001**
 | `fetch` / `score` / `refresh` | “started” lines, no crash loops |
 | Browser | `curl http://localhost:3001/health` → JSON `status: ok` |
 | Browser | Open `http://localhost:3000` — leaderboard preview loads (no 404 to `/api/...` in Network tab for calls to port **3001**) |
+
+---
+
+## OAuth troubleshooting (Google `invalid_client` / GitHub 404)
+
+| Symptom | What to check |
+|--------|----------------|
+| **Google: Error 401 `invalid_client`** | Use a **Web application** OAuth client (not iOS/Android). **Client ID** and **Client Secret** must be from the **same** credential row in Google Cloud (no typos, no extra spaces — copy/paste again). If the secret was rotated, update `.env`. |
+| **Google: still failing** | **OAuth consent screen**: app in *Testing* requires your Google account under **Test users**. **Redirect URI** in Google must equal `${OAUTH_CALLBACK_BASE_URL}/auth/google/callback` exactly (see API startup logs). |
+| **GitHub / Google: 404 in browser** | **Wrong host:** OAuth URLs must hit the **API** (`http://localhost:3001/auth/...`), not Next (`3000`). Set `NEXT_PUBLIC_API_URL=http://localhost:3001` in `scorebook-frontend/.env.local` and restart Next. |
+| **GitHub: redirect/callback errors** | GitHub OAuth App **Authorization callback URL** must be exactly `http://localhost:3001/auth/github/callback` (or your deployed API URL + `/auth/github/callback`). Not `/api/auth/...` — Express mounts auth at **`/auth`**, not under `/api`. |
+| **Port clash** | If Next binds to **3001** instead of **3000**, the API cannot start and links break — see **Ports must be free** above. |
+
+After changing `.env`, restart the **API** process. After changing `.env.local`, restart **Next.js**.
 
 ---
 

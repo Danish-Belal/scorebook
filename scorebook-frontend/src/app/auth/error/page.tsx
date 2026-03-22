@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { BASE_URL } from "@/lib/api";
+import { authApi } from "@/lib/api";
 
 export default function AuthError() {
   return (
@@ -15,7 +15,7 @@ export default function AuthError() {
           Something went wrong during sign in. This can happen if you denied access or there was a network issue.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <a href={`${BASE_URL}/auth/github`}
+          <a href={authApi.githubUrl()}
             className="px-6 py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-sm font-semibold text-white transition-all glow-sm">
             Try again with GitHub
           </a>
