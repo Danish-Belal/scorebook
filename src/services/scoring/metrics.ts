@@ -24,7 +24,8 @@ export function extractCodeforcesMetrics(data: any): PlatformMetrics {
 // ─── LeetCode ─────────────────────────────────────────────────────────────────
 export function extractLeetCodeMetrics(data: any): PlatformMetrics {
   const totalSolved = data.totalSolved ?? 0;
-  const totalSubmissions = data.totalSubmissions ?? 1;
+  // Avoid 0/0 → NaN when API sends explicit zeros
+  const totalSubmissions = Math.max(1, data.totalSubmissions ?? 0);
   return {
     contestRating:    data.contestRating ?? 0,
     hardSolved:       data.hardSolved ?? 0,

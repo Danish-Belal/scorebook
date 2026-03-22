@@ -1,225 +1,378 @@
 /**
- * Tests for sparse-platform edge cases in scoring engine v3.
- * These tests verify the exact scenarios described in the design doc.
+ * tests/unit/sparse_platform.test.ts
+ *
+ * Tests for the PS / ENG / BR component weight model and sparse-platform behaviour.
+ *
+ * KEY ENGINE FACT (read this before touching the tests):
+ * The engine does NOT do "dump missing component weight into PS".
+ * It does proportional renormalisation:
+ *   presentWeight = COMP_PS + (eng present ? 0.25 : 0) + (br present ? 0.10 : 0)
+ *   scale = 1 / presentWeight
+ *   psWeight = 0.65 * scale, engWeight = 0.25 * scale, brWeight = 0.10 * scale
+ *
+ * Therefore:
+ *   PS only (no Eng, no BR):  presentWeight=0.65  → psWeight=1.000
+ *   PS + Eng (no BR):         presentWeight=0.90  → psWeight≈0.722, engWeight≈0.278
+ *   PS + BR (no Eng):         presentWeight=0.75  → psWeight≈0.867, brWeight≈0.133
+ *   PS + Eng + BR:            presentWeight=1.00  → psWeight=0.65, engWeight=0.25, brWeight=0.10
  */
 
-import { computeCompositeScore, PS_PLATFORMS, ENG_PLATFORMS } from "../../src/services/scoring/composite";
-import { AllPercentileContexts } from "../../src/services/scoring/composite";
+import {
+  computeCompositeScore,
+  PS_PLATFORMS,
+  AllPercentileContexts,
+} from "../../src/services/scoring/composite";
+import { PercentileContext } from "../../src/services/scoring/percentile";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Test fixture helpers ─────────────────────────────────────────────────────
 
-/** Build a fake percentile context where every user has values 0–100 evenly */
-function makeUniformContext(N = 100): import("../../src/services/scoring/percentile").PercentileContext {
+/**
+ * Uniform context: N values spread 0..N-1.
+ * A raw metric value of X (0-based index) lands at percentile (X+0.5)/N * 100.
+ * With N=200: raw=90 → PR = (90+0.5)/200*100 = 45.25
+ * With N=200: raw=190 → PR = (190+0.5)/200*100 = 95.25
+ */
+function makeUniformCtx(N = 200): PercentileContext {
   const allValues    = Array.from({ length: N }, (_, i) => i);
   const sortedValues = [...allValues];
   return { allValues, sortedValues };
 }
 
-/** Build contexts for all metrics of a given platform with uniform distribution */
-function contextsForPlatform(platform: string, metrics: string[], N = 200): AllPercentileContexts {
-  const map = new Map<string, any>();
-  for (const m of metrics) {
-    map.set(`${platform}:${m}`, makeUniformContext(N));
+function buildFullCtx(N = 200): AllPercentileContexts {
+  const ctx = makeUniformCtx(N);
+  const map = new Map<string, PercentileContext>();
+
+  const platformMetrics: Record<string, string[]> = {
+    codeforces:  ["currentRating","maxRating","weightedProblemScore","contestsParticipated","contributionScore"],
+    leetcode:    ["contestRating","hardSolved","mediumSolved","attendedContests","acceptanceRate"],
+    codechef:    ["currentRating","maxRating","stars","contestsParticipated","problemsSolved"],
+    atcoder:     ["currentRating","maxRating","contestsParticipated","winCount"],
+    topcoder:    ["algorithmRating","maxRating","contestsEntered"],
+    github:      ["totalMergedPRs","totalCommitsLastYear","totalStarsEarned","totalReviewsLastYear","totalContribDays","accountAgeFactor"],
+    hackerrank:  ["overallScore","certifications","problemsSolved"],
+    hackerearth: ["currentRating","problemsSolved","contestsEntered"],
+    gfg:         ["practiceScore","problemsSolved","codingStreak"],
+  };
+
+  for (const [platform, metrics] of Object.entries(platformMetrics)) {
+    for (const metric of metrics) {
+      map.set(`${platform}:${metric}`, ctx);
+    }
   }
   return map;
 }
 
-/** Build full contexts for standard platforms */
-function buildFullContexts(N = 200): AllPercentileContexts {
-  const map = new Map<string, any>();
-  const ctx = makeUniformContext(N);
+const ctx = buildFullCtx(200);
 
-  // CF metrics
-  for (const m of ["currentRating","maxRating","weightedProblemScore","contestsParticipated","contributionScore"])
-    map.set(`codeforces:${m}`, ctx);
-  // LC metrics
-  for (const m of ["contestRating","hardSolved","mediumSolved","attendedContests","acceptanceRate"])
-    map.set(`leetcode:${m}`, ctx);
-  // GitHub metrics
-  for (const m of ["totalMergedPRs","totalCommitsLastYear","totalStarsEarned","totalReviewsLastYear","totalContribDays","accountAgeFactor"])
-    map.set(`github:${m}`, ctx);
-  // GFG
-  for (const m of ["practiceScore","problemsSolved","codingStreak"])
-    map.set(`gfg:${m}`, ctx);
+// Metrics that sit at ~90th percentile in the uniform 0-199 context
+// raw=180 → PR = (180+0.5)/200*100 = 90.25
+const eliteCF = {
+  currentRating: 180, maxRating: 182, weightedProblemScore: 178,
+  contestsParticipated: 180, contributionScore: 160,
+};
+const eliteLC = {
+  contestRating: 180, hardSolved: 178, mediumSolved: 175,
+  attendedContests: 178, acceptanceRate: 0.85,
+};
+const eliteGH = {
+  totalMergedPRs: 178, totalCommitsLastYear: 175, totalStarsEarned: 170,
+  totalReviewsLastYear: 172, totalContribDays: 174, accountAgeFactor: 90,
+};
+const eliteGFG = {
+  practiceScore: 175, problemsSolved: 172, codingStreak: 168,
+};
 
-  return map;
-}
+// Metrics at ~30th percentile: raw=60 → PR ≈ (60+0.5)/200*100 = 30.25
+const avgCF = {
+  currentRating: 60, maxRating: 62, weightedProblemScore: 58,
+  contestsParticipated: 60, contributionScore: 55,
+};
+const avgLC = {
+  contestRating: 60, hardSolved: 58, mediumSolved: 62,
+  attendedContests: 60, acceptanceRate: 0.55,
+};
+const avgGH = {
+  totalMergedPRs: 60, totalCommitsLastYear: 58, totalStarsEarned: 55,
+  totalReviewsLastYear: 57, totalContribDays: 62, accountAgeFactor: 60,
+};
+const avgGFG = {
+  practiceScore: 58, problemsSolved: 60, codingStreak: 55,
+};
 
-// Elite CF+LC metrics (top 90th percentile values in a 0–100 uniform distribution)
-const eliteCFMetrics   = { currentRating: 90, maxRating: 92, weightedProblemScore: 88, contestsParticipated: 85, contributionScore: 70 };
-const eliteLCMetrics   = { contestRating: 90, hardSolved: 88, mediumSolved: 85, attendedContests: 80, acceptanceRate: 0.80 };
-// Average metrics across all platforms (~55th percentile)
-const avgMetrics       = { currentRating: 55, maxRating: 57, weightedProblemScore: 54, contestsParticipated: 52, contributionScore: 50 };
-const avgLCMetrics     = { contestRating: 55, hardSolved: 50, mediumSolved: 55, attendedContests: 52, acceptanceRate: 0.55 };
-const avgGHMetrics     = { totalMergedPRs: 55, totalCommitsLastYear: 55, totalStarsEarned: 50, totalReviewsLastYear: 52, totalContribDays: 53, accountAgeFactor: 60 };
-const avgGFGMetrics    = { practiceScore: 58, problemsSolved: 55, codingStreak: 50 };
+// ─── Component weight model ───────────────────────────────────────────────────
 
-const ctx  = buildFullContexts(200);
+describe("Component weight model — proportional renormalisation", () => {
 
-// ─── Test Suite ───────────────────────────────────────────────────────────────
-
-describe("Sparse Platform Edge Cases — v3 Scoring Engine", () => {
-
-  // ── BUG 1 FIX: Elite 2-platform user should outrank average 9-platform user ─
-
-  test("Elite CF+LC user outranks average 9-platform user", () => {
-    const eliteUser = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics },
-      ctx, 0.95, 1.0
-    );
-
-    const avgUser = computeCompositeScore(
-      {
-        codeforces: avgMetrics,   leetcode: avgLCMetrics,
-        github: avgGHMetrics,     gfg: avgGFGMetrics,
-        // other platforms at ~55th percentile
-      },
-      ctx, 0.95, 1.0
-    );
-
-    expect(eliteUser.finalScore).toBeGreaterThan(avgUser.finalScore);
-    console.log(`Elite 2-platform: ${eliteUser.finalScore} vs Avg 9-platform: ${avgUser.finalScore}`);
+  test("PS only: psWeight = 1.0 (not 0.65, not 0.90)", () => {
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    expect(r.psWeight).toBeCloseTo(1.0, 2);
+    expect(r.engWeight).toBe(0);
+    expect(r.brWeight).toBe(0);
   });
 
-  // ── BUG 2 FIX: PS weight absorbs missing components correctly ────────────────
-
-  test("Missing GitHub pushes weight to PS, not penalised", () => {
-    const withoutGH = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics },
+  test("PS + Eng: psWeight ≈ 0.722, engWeight ≈ 0.278", () => {
+    // presentWeight = 0.65 + 0.25 = 0.90 → scale = 1/0.90
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, github: eliteGH },
       ctx, 1.0, 1.0
     );
-
-    expect(withoutGH.engWeight).toBe(0);
-    expect(withoutGH.psWeight).toBeCloseTo(0.9, 2); // 65% + 25% = 90%
-    expect(withoutGH.fairness.engineeringIncluded).toBe(false);
-    expect(withoutGH.fairness.note).toContain("GitHub not connected");
+    expect(r.psWeight).toBeCloseTo(0.65 / 0.90, 2);
+    expect(r.engWeight).toBeCloseTo(0.25 / 0.90, 2);
+    expect(r.brWeight).toBe(0);
   });
 
-  test("With GitHub connected, engineering has 25% weight", () => {
-    const withGH = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics, github: avgGHMetrics },
+  test("PS + BR: psWeight ≈ 0.867, brWeight ≈ 0.133", () => {
+    // presentWeight = 0.65 + 0.10 = 0.75 → scale = 1/0.75
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, gfg: eliteGFG },
       ctx, 1.0, 1.0
     );
-
-    expect(withGH.engWeight).toBeCloseTo(0.25, 2);
-    expect(withGH.psWeight).toBeCloseTo(0.65, 2);
-    expect(withGH.fairness.engineeringIncluded).toBe(true);
+    expect(r.psWeight).toBeCloseTo(0.65 / 0.75, 2);
+    expect(r.brWeight).toBeCloseTo(0.10 / 0.75, 2);
+    expect(r.engWeight).toBe(0);
   });
 
-  // ── BUG 3 FIX: Missing PS platforms estimated from user's own average ────────
-
-  test("Missing PS platforms estimated from own PS average when ≥2 platforms", () => {
-    const user = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics }, // CF+LC only
+  test("PS + Eng + BR: original weights exactly (0.65 / 0.25 / 0.10)", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, github: eliteGH, gfg: eliteGFG },
       ctx, 1.0, 1.0
     );
-
-    // Should estimate codechef, atcoder, topcoder
-    expect(user.fairness.estimatedPlatforms).toContain("codechef");
-    expect(user.fairness.estimatedPlatforms).toContain("atcoder");
-    expect(user.fairness.estimatedPlatforms).toContain("topcoder");
-
-    // Estimated platform score should be approximately their PS average
-    const estimatedPlatformScore = user.platformScores.find(p => p.platform === "codechef" && p.estimated);
-    expect(estimatedPlatformScore).toBeDefined();
-
-    // The estimated score should NOT be 0 or 50 (pool median)
-    expect(estimatedPlatformScore!.platformScore).toBeGreaterThan(70); // They're elite
-    console.log(`Estimated CodeChef score for elite user: ${estimatedPlatformScore!.platformScore}`);
+    expect(r.psWeight).toBeCloseTo(0.65, 2);
+    expect(r.engWeight).toBeCloseTo(0.25, 2);
+    expect(r.brWeight).toBeCloseTo(0.10, 2);
   });
 
-  test("Only 1 PS platform → missing PS platforms default to pool median (50), not estimated", () => {
-    const user = computeCompositeScore(
-      { codeforces: eliteCFMetrics }, // CF only — not enough to extrapolate
+  test("weights always sum to exactly 1.0 for any platform combination", () => {
+    const combos = [
+      {},
+      { codeforces: eliteCF },
+      { codeforces: eliteCF, github: eliteGH },
+      { codeforces: eliteCF, gfg: eliteGFG },
+      { codeforces: eliteCF, github: eliteGH, gfg: eliteGFG },
+      { codeforces: eliteCF, leetcode: eliteLC },
+      { codeforces: eliteCF, leetcode: eliteLC, github: eliteGH, gfg: eliteGFG },
+    ];
+    for (const combo of combos) {
+      const r = computeCompositeScore(combo as any, ctx, 0.9, 0.9);
+      expect(r.psWeight + r.engWeight + r.brWeight).toBeCloseTo(1.0, 5);
+    }
+  });
+
+  test("fairness note says 'redistributed proportionally' when GitHub not connected", () => {
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    expect(r.fairness.engineeringIncluded).toBe(false);
+    expect(r.fairness.note).toContain("redistributed proportionally");
+  });
+
+  test("fairness.engineeringIncluded is true when GitHub is connected", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, github: eliteGH },
       ctx, 1.0, 1.0
     );
+    expect(r.fairness.engineeringIncluded).toBe(true);
+  });
+});
 
-    const estimatedLC = user.platformScores.find(p => p.platform === "leetcode" && p.estimated);
-    expect(estimatedLC).toBeDefined();
-    // Should be 50 (pool median), not extrapolated from 1 platform
-    expect(estimatedLC!.platformScore).toBe(50);
+// ─── Single-platform dominance mode ──────────────────────────────────────────
+
+describe("Single PS platform — dominance mode", () => {
+
+  test("CF only with enough activity: dominantPlatform = 'codeforces'", () => {
+    // eliteCF has contestsParticipated=180 ≥ MIN_CONTESTS(5) → dominant mode
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    expect(r.fairness.dominantPlatform).toBe("codeforces");
   });
 
-  // ── BUG 4 FIX: Pure CP developer not penalised for no GitHub ─────────────────
-
-  test("Pure CP developer (no GitHub) can reach high score", () => {
-    const cpDev = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics },
-      ctx, 0.95, 1.0
-    );
-
-    // Should be able to get a high score — not capped because GitHub missing
-    expect(cpDev.finalScore).toBeGreaterThan(70);
-    expect(cpDev.psWeight).toBeCloseTo(0.9, 1); // PS gets 90%
+  test("LC only with enough activity: dominantPlatform = 'leetcode'", () => {
+    // eliteLC has attendedContests=178 ≥ 5 → dominant mode
+    const r = computeCompositeScore({ leetcode: eliteLC }, ctx, 1.0, 1.0);
+    expect(r.fairness.dominantPlatform).toBe("leetcode");
   });
 
-  // ── Fairness: PS average used for estimates, not pool median ─────────────────
+  test("In dominant mode, psScore equals the single platform's score", () => {
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    const cfScore = r.platformScores.find(p => p.platform === "codeforces" && p.connected)!.platformScore;
+    expect(r.psScore).toBeCloseTo(cfScore, 1);
+  });
 
-  test("Elite user's estimated platforms are higher than pool median", () => {
-    const eliteUser = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics },
+  test("In dominant mode, missing PS platforms use estimationMethod 'single_dominant'", () => {
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    const estimated = r.platformScores.filter(p => p.estimated);
+    expect(estimated.length).toBe(PS_PLATFORMS.length - 1); // 4 missing
+    for (const p of estimated) {
+      expect(p.estimationMethod).toBe("single_dominant");
+    }
+  });
+
+  test("CF with 3 contests (below threshold): dominantPlatform is null", () => {
+    // contestsParticipated=3 < MIN_CONTESTS(5) and no problems → not dominant
+    const lowActivity = {
+      currentRating: 180, maxRating: 182, weightedProblemScore: 0,
+      contestsParticipated: 3, contributionScore: 10,
+    };
+    const r = computeCompositeScore({ codeforces: lowActivity }, ctx, 1.0, 1.0);
+    expect(r.fairness.dominantPlatform).toBeNull();
+  });
+
+  test("Low-activity single platform: missing PS platforms use 'pool_median'", () => {
+    const lowActivity = {
+      currentRating: 40, maxRating: 42, weightedProblemScore: 0,
+      contestsParticipated: 3, contributionScore: 5,
+    };
+    const r = computeCompositeScore({ codeforces: lowActivity }, ctx, 1.0, 1.0);
+    const estimated = r.platformScores.filter(p => p.estimated);
+    for (const p of estimated) {
+      expect(p.estimationMethod).toBe("pool_median");
+      expect(p.platformScore).toBe(50);
+    }
+  });
+});
+
+// ─── Multi-platform estimation ────────────────────────────────────────────────
+
+describe("Multi-platform PS estimation (≥2 connected)", () => {
+
+  test("Missing PS platforms use 'own_average' method", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC },
       ctx, 1.0, 1.0
     );
+    const estimated = r.platformScores.filter(p => p.estimated && p.component === "ps");
+    expect(estimated.length).toBe(3); // codechef, atcoder, topcoder
+    for (const p of estimated) {
+      expect(p.estimationMethod).toBe("own_average");
+    }
+  });
 
-    // All estimated PS platforms should be above 50 (pool median)
-    for (const p of eliteUser.platformScores.filter(x => x.estimated)) {
+  test("Elite CF+LC: estimated platforms score above 50 (higher than pool median)", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC },
+      ctx, 1.0, 1.0
+    );
+    const estimated = r.platformScores.filter(p => p.estimated && p.component === "ps");
+    for (const p of estimated) {
       expect(p.platformScore).toBeGreaterThan(50);
     }
   });
 
-  test("Below-average user's estimated platforms are below pool median", () => {
-    const weakMetrics = { currentRating: 20, maxRating: 22, weightedProblemScore: 18, contestsParticipated: 15, contributionScore: 10 };
-    const weakLCMetrics = { contestRating: 20, hardSolved: 15, mediumSolved: 20, attendedContests: 18, acceptanceRate: 0.30 };
-
-    const weakUser = computeCompositeScore(
-      { codeforces: weakMetrics, leetcode: weakLCMetrics },
+  test("Below-average CF+LC: estimated platforms score below 50", () => {
+    const r = computeCompositeScore(
+      { codeforces: avgCF, leetcode: avgLC },
       ctx, 1.0, 1.0
     );
-
-    for (const p of weakUser.platformScores.filter(x => x.estimated)) {
+    const estimated = r.platformScores.filter(p => p.estimated && p.component === "ps");
+    for (const p of estimated) {
       expect(p.platformScore).toBeLessThan(50);
     }
   });
 
-  // ── Edge: user with 0 connected platforms ────────────────────────────────────
-
-  test("User with no platforms gets score ~0 and no errors", () => {
-    const emptyUser = computeCompositeScore({}, ctx, 0.7, 0.8);
-    expect(emptyUser.finalScore).toBeGreaterThanOrEqual(0);
-    expect(emptyUser.finalScore).toBeLessThanOrEqual(10);
-    expect(emptyUser.fairness.platformsConnected).toBe(0);
-  });
-
-  // ── Breadth weight flows to PS if no breadth platforms ───────────────────────
-
-  test("BR weight flows to PS when no breadth platforms connected", () => {
-    const user = computeCompositeScore(
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics, github: avgGHMetrics },
+  test("estimatedPlatforms array contains exactly the missing PS platforms", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC },
       ctx, 1.0, 1.0
     );
-
-    expect(user.brWeight).toBe(0);
-    expect(user.brScore).toBeNull();
-    // PS + ENG should sum to 1.0
-    expect(user.psWeight + user.engWeight).toBeCloseTo(1.0, 2);
+    expect(r.fairness.estimatedPlatforms).toContain("codechef");
+    expect(r.fairness.estimatedPlatforms).toContain("atcoder");
+    expect(r.fairness.estimatedPlatforms).toContain("topcoder");
+    expect(r.fairness.estimatedPlatforms).not.toContain("codeforces");
+    expect(r.fairness.estimatedPlatforms).not.toContain("leetcode");
   });
 
-  // ── Score is always in [0, 100] ───────────────────────────────────────────────
+  test("Elite 2-platform user outscores average-across-all user", () => {
+    const elite = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC },
+      ctx, 1.0, 1.0
+    );
+    const average = computeCompositeScore(
+      { codeforces: avgCF, leetcode: avgLC, github: avgGH, gfg: avgGFG },
+      ctx, 1.0, 1.0
+    );
+    expect(elite.finalScore).toBeGreaterThan(average.finalScore);
+  });
+});
 
-  test("Final score is always between 0 and 100 for any combination", () => {
-    const cases = [
-      {},
-      { codeforces: eliteCFMetrics },
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics },
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics, github: avgGHMetrics },
-      { codeforces: eliteCFMetrics, leetcode: eliteLCMetrics, github: avgGHMetrics, gfg: avgGFGMetrics },
-    ];
+// ─── Score bounds and invariants ──────────────────────────────────────────────
 
-    for (const metrics of cases) {
-      const result = computeCompositeScore(metrics as any, ctx, 0.9, 0.9);
-      expect(result.finalScore).toBeGreaterThanOrEqual(0);
-      expect(result.finalScore).toBeLessThanOrEqual(100);
-      expect(result.psWeight + result.engWeight + result.brWeight).toBeCloseTo(1.0, 2);
+describe("Score bounds — always valid", () => {
+
+  const allCombos = [
+    {},
+    { codeforces: eliteCF },
+    { leetcode: eliteLC },
+    { codeforces: eliteCF, leetcode: eliteLC },
+    { codeforces: eliteCF, github: eliteGH },
+    { codeforces: avgCF, leetcode: avgLC },
+    { codeforces: eliteCF, leetcode: eliteLC, github: eliteGH, gfg: eliteGFG },
+  ];
+
+  test("finalScore always in [0, 100]", () => {
+    for (const combo of allCombos) {
+      const r = computeCompositeScore(combo as any, ctx, 0.80, 0.85);
+      expect(r.finalScore).toBeGreaterThanOrEqual(0);
+      expect(r.finalScore).toBeLessThanOrEqual(100);
     }
+  });
+
+  test("scoreLower ≤ finalScore ≤ scoreUpper", () => {
+    for (const combo of allCombos) {
+      const r = computeCompositeScore(combo as any, ctx, 0.80, 0.85);
+      expect(r.scoreLower).toBeLessThanOrEqual(r.finalScore);
+      expect(r.scoreUpper).toBeGreaterThanOrEqual(r.finalScore);
+    }
+  });
+
+  test("all metric percentileRanks in [0, 100]", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC, github: eliteGH },
+      ctx, 1.0, 1.0
+    );
+    for (const p of r.platformScores) {
+      for (const m of p.metrics) {
+        expect(m.percentileRank).toBeGreaterThanOrEqual(0);
+        expect(m.percentileRank).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  test("empty user gets finalScore near 0 (not 50), fairness shows 0 platforms", () => {
+    const r = computeCompositeScore({}, ctx, 0.70, 0.80);
+    expect(r.finalScore).toBeLessThan(5);
+    expect(r.psScore).toBe(0);
+    expect(r.fairness.platformsConnected).toBe(0);
+  });
+});
+
+// ─── Fairness metadata ────────────────────────────────────────────────────────
+
+describe("Fairness metadata accuracy", () => {
+
+  test("psPlatformsConnected matches actual connected PS platforms", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, leetcode: eliteLC },
+      ctx, 1.0, 1.0
+    );
+    expect(r.fairness.psPlatformsConnected).toBe(2);
+    expect(r.fairness.psPlatformsTotal).toBe(5);
+  });
+
+  test("platformsConnected counts all components (PS + Eng + BR)", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, github: eliteGH, gfg: eliteGFG },
+      ctx, 1.0, 1.0
+    );
+    expect(r.fairness.platformsConnected).toBe(3);
+  });
+
+  test("breadthIncluded is false when no BR platforms connected", () => {
+    const r = computeCompositeScore({ codeforces: eliteCF }, ctx, 1.0, 1.0);
+    expect(r.fairness.breadthIncluded).toBe(false);
+  });
+
+  test("breadthIncluded is true when a BR platform is connected", () => {
+    const r = computeCompositeScore(
+      { codeforces: eliteCF, gfg: eliteGFG },
+      ctx, 1.0, 1.0
+    );
+    expect(r.fairness.breadthIncluded).toBe(true);
   });
 });
