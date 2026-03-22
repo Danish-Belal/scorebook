@@ -283,20 +283,28 @@ What to look for:
 
 ## All commands
 
-```bash
-npm install              # install backend dependencies
-cd scorebook-frontend && npm install && cd ..   # frontend deps (first time)
-npm run migrate          # create database tables (run once)
-npm run diagnose:score   # Redis queues + leaderboard (see section above)
-npm run dev:all          # API + 3 workers + frontend (single terminal)
-npm run stop:all         # kill ports 3000/3001 + this repo’s ts-node-dev workers (macOS/Linux)
-npm run dev              # API only
-npm run worker:fetch     # fetch worker only
-npm run worker:score     # score worker only
-npm run worker:refresh   # refresh cron only
-npm run test:unit        # run scoring engine tests
-npm run build            # compile TypeScript for production
-```
+| Command | Description |
+|--------|-------------|
+| `npm install` | Install backend dependencies |
+| `cd scorebook-frontend && npm install && cd ..` | Frontend dependencies (first time) |
+| `npm run migrate` | Create database tables (run once) |
+| `npm run diagnose:score` | Redis queues + leaderboard (see **Debug: score not updating** above) |
+| `npm run dev:all` | API + 3 workers + frontend (single terminal) |
+| `npm run stop:all` | Kill ports 3000/3001 + this repo’s `ts-node-dev` workers (macOS/Linux) |
+| `npm run dev` | API only |
+| `npm run worker:fetch` | Fetch worker only |
+| `npm run worker:score` | Score worker only |
+| `npm run worker:refresh` | Refresh cron only |
+| `npm run worker:snapshot` | Daily score history snapshots (dev) |
+| `npm run worker:snapshot:prod` | Same for production |
+| `npm run test:unit` | Run scoring engine tests |
+| `npm run build` | Compile TypeScript for production |
+
+**Production (Render):** In addition to your existing background workers (fetch, score, refresh), create a **fourth** background worker with start command:
+
+`node dist/workers/snapshotWorker.js`
+
+Use the same env vars as the other workers (`DATABASE_URL`, `REDIS_URL`, etc.).
 
 ---
 

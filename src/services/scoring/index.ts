@@ -204,6 +204,20 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
 
   logger.info(`[ScoringV2] ${userId} → final=${result.finalScore} recency=${recencyFactor} confidence=${confidenceFactor}`);
 
+  const scoreBreakdown = {
+    platformScores: result.platformScores,
+    titles: result.titles,
+    potentialScore: result.potentialScore,
+    potentialNote: result.potentialNote,
+    fairness: result.fairness,
+    psScore: result.psScore,
+    engScore: result.engScore,
+    brScore: result.brScore,
+    psWeight: result.psWeight,
+    engWeight: result.engWeight,
+    brWeight: result.brWeight,
+  } as any;
+
   // 5. Persist to DB
   await db.insert(scores).values({
     userId,
@@ -219,7 +233,7 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
     githubScore:      String(result.breakdown.github      ?? 0),
     recencyFactor:    String(result.recencyFactor),
     confidenceFactor: String(result.confidenceFactor),
-    scoreBreakdown:   result.platformScores as unknown as Record<string, unknown>,
+    scoreBreakdown,
     scoreLowerBound:  String(result.scoreLower),
     scoreUpperBound:  String(result.scoreUpper),
     computedAt:       new Date(),
@@ -238,7 +252,7 @@ export async function scoreUser(userId: string): Promise<ScoreUserResult> {
       githubScore:      String(result.breakdown.github      ?? 0),
       recencyFactor:    String(result.recencyFactor),
       confidenceFactor: String(result.confidenceFactor),
-      scoreBreakdown:   result.platformScores as unknown as Record<string, unknown>,
+      scoreBreakdown,
       scoreLowerBound:  String(result.scoreLower),
       scoreUpperBound:  String(result.scoreUpper),
       computedAt:       new Date(),

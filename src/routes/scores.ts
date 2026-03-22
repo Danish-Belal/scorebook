@@ -74,9 +74,8 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
     scoreUpper:       scoreRow.scoreUpperBound ? parseFloat(scoreRow.scoreUpperBound) : null,
     rank:             rank0 !== null ? rank0 + 1 : null,
     totalUsers,
-    // "Top X%" is more intuitive than a raw percentile number
+    // Raw percentile (0–100 scale from rank position); see topPercent below with titles / fairness
     percentile:       rank0 !== null ? ((totalUsers - rank0) / totalUsers * 100).toFixed(1) : null,
-    topPercent:       rank0 !== null ? computeTopPercent(rank0, totalUsers) : null,
     recencyFactor:    scoreRow.recencyFactor ? parseFloat(scoreRow.recencyFactor) : null,
     confidenceFactor: scoreRow.confidenceFactor ? parseFloat(scoreRow.confidenceFactor) : null,
     breakdown: {
@@ -100,6 +99,8 @@ router.get("/me", requireAuth, async (req: AuthRequest, res: Response) => {
     potentialNote:  (scoreRow.scoreBreakdown as any)?.potentialNote  ?? null,
     // Human-readable fairness explanation
     fairnessNote:   (scoreRow.scoreBreakdown as any)?.fairness?.note ?? null,
+    // "Top X%" label (same family as titles / potential / fairness)
+    topPercent:     rank0 !== null ? computeTopPercent(rank0, totalUsers) : null,
   });
 });
 

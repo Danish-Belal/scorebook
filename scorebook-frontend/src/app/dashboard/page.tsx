@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Trophy, TrendingUp, Activity, Plus, ExternalLink, AlertCircle, CheckCircle, Clock, ChevronRight, Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
-import { scoresApi, platformsApi, MyScoreResponse, PlatformStatus, ScoreHistory, authApi, ScoreQueueStatusResponse, ApiError } from "@/lib/api";
+import { scoresApi, platformsApi, MyScoreResponse, PlatformStatus, ScoreHistory, authApi, ScoreQueueStatusResponse, ApiError, User } from "@/lib/api";
 import { PLATFORMS, PlatformKey, formatScore, getScoreColor, getRankBadge, timeAgo } from "@/lib/constants";
 import Navbar from "@/components/layout/Navbar";
 import { toast } from "sonner";
@@ -139,17 +139,35 @@ function Stat({ label, value }: { label: string; value: any }) {
 function ScoreCalculationCard({
   qs,
   platformCount,
+  platformsLoading,
   onScoreAgain,
   refreshing,
   scoringMeta,
 }: {
   qs: ScoreQueueStatusResponse | null;
   platformCount: number;
+  platformsLoading?: boolean;
   onScoreAgain: () => void;
   refreshing: boolean;
   /** From /me scoreBreakdown when worker saved a 0 with scoringSkipped */
   scoringMeta?: { reason?: string; note?: string } | null;
 }) {
+  if (platformsLoading && platformCount === 0) {
+    return (
+      <motion.section
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass rounded-2xl p-6 border border-brand-500/25 mb-8 flex items-center gap-3"
+      >
+        <Loader2 className="w-6 h-6 animate-spin text-brand-400 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-white">Loading your profile…</p>
+          <p className="text-xs text-slate-500 mt-0.5">Platforms & score data</p>
+        </div>
+      </motion.section>
+    );
+  }
+
   if (platformCount === 0) {
     return (
       <motion.section
@@ -447,7 +465,11 @@ export default function DashboardPage() {
   const [history, setHistory]   = useState<ScoreHistory[]>([]);
   const [platforms, setPlatforms] = useState<PlatformStatus[]>([]);
   const [platformHint, setPlatformHint] = useState<string | null>(null);
-  const [loading, setLoading]   = useState(true);
+  /** Session OK from GET /auth/me — then we show the page shell (not a full-screen skeleton). */
+  const [authReady, setAuthReady] = useState(false);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(true);
+  const [platformsLoading, setPlatformsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [queueStatus, setQueueStatus] = useState<ScoreQueueStatusResponse | null>(null);
@@ -469,41 +491,61 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
+  /** Auth first (light), then score + platforms in parallel so the slowest API doesn’t block the whole page. */
   useEffect(() => {
-    // Auth check
-    authApi.getMe().catch(() => router.push("/"));
-  }, []);
+    let cancelled = false;
+    authApi
+      .getMe()
+      .then((r) => {
+        if (cancelled) return;
+        setSessionUser(r.user);
+        setAuthReady(true);
+        setScoreLoading(true);
+        setPlatformsLoading(true);
 
-  useEffect(() => {
-    Promise.allSettled([scoresApi.getMe(), platformsApi.list()])
-      .then(([scoreRes, platRes]) => {
-        if (platRes.status === "fulfilled") {
-          setPlatforms(platRes.value.platforms);
-          setPlatformHint(platRes.value.hint ?? null);
-        }
-        if (scoreRes.status === "fulfilled") {
-          const s = scoreRes.value;
-          setScore(s);
-          if (s.userId) {
-            scoresApi.getHistory(s.userId).then((h) => setHistory(h.history)).catch(() => {});
-          }
-        }
-        const score401 =
-          scoreRes.status === "rejected" &&
-          scoreRes.reason instanceof ApiError &&
-          scoreRes.reason.status === 401;
-        const plat401 =
-          platRes.status === "rejected" &&
-          platRes.reason instanceof ApiError &&
-          platRes.reason.status === 401;
-        if (score401 && plat401) router.push("/");
+        void scoresApi
+          .getMe()
+          .then((s) => {
+            if (cancelled) return;
+            setScore(s);
+            if (s.userId) {
+              scoresApi.getHistory(s.userId).then((h) => setHistory(h.history)).catch(() => {});
+            }
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            if (err instanceof ApiError && err.status === 401) router.push("/");
+          })
+          .finally(() => {
+            if (!cancelled) setScoreLoading(false);
+          });
+
+        void platformsApi
+          .list()
+          .then((p) => {
+            if (cancelled) return;
+            setPlatforms(p.platforms);
+            setPlatformHint(p.hint ?? null);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            if (err instanceof ApiError && err.status === 401) router.push("/");
+          })
+          .finally(() => {
+            if (!cancelled) setPlatformsLoading(false);
+          });
       })
-      .finally(() => setLoading(false));
+      .catch(() => {
+        router.push("/");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   /** Open dashboard with existing session (bookmark): one auto sync+score per tab session */
   useEffect(() => {
-    if (loading || platforms.length === 0) return;
+    if (!authReady || platformsLoading || platforms.length === 0) return;
     try {
       if (typeof window === "undefined" || sessionStorage.getItem("scorebook_auto_sync_v1")) return;
       sessionStorage.setItem("scorebook_auto_sync_v1", "1");
@@ -529,7 +571,7 @@ export default function DashboardPage() {
           /* ignore */
         }
       });
-  }, [loading, platforms.length, reloadDashboardData]);
+  }, [authReady, platformsLoading, platforms.length, reloadDashboardData]);
 
   /**
    * Queue-status: fetch once on start, then only while work may still change.
@@ -537,7 +579,7 @@ export default function DashboardPage() {
    * Bump `queuePollEpoch` after refresh/sync to resume polling.
    */
   useEffect(() => {
-    if (loading) return;
+    if (!authReady) return;
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -588,7 +630,7 @@ export default function DashboardPage() {
       cancelled = true;
       clearTimer();
     };
-  }, [loading, queuePollEpoch, reloadDashboardData]);
+  }, [authReady, queuePollEpoch, reloadDashboardData]);
 
   /** When a scores row appears in DB, refresh full dashboard once (platform cards + breakdown). */
   useEffect(() => {
@@ -633,22 +675,18 @@ export default function DashboardPage() {
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen">
-      <Navbar />
-      <div className="pt-16 max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-4">
-            <div className="h-64 skeleton rounded-2xl" />
-            <div className="h-40 skeleton rounded-2xl" />
-          </div>
-          <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-            {[...Array(6)].map((_, i) => <div key={i} className="h-48 skeleton rounded-xl" />)}
-          </div>
+  /** Only block on lightweight auth — not on heavy /api/scores/me */
+  if (!authReady) {
+    return (
+      <div className="min-h-screen mesh-bg">
+        <Navbar />
+        <div className="pt-24 flex flex-col items-center justify-center gap-3 px-6">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
+          <p className="text-sm text-slate-400">Signing you in…</p>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   const connectedPlatforms = Object.keys(score?.platforms || {});
   const rankBadge = score?.rank ? getRankBadge(score.rank) : null;
@@ -663,7 +701,9 @@ export default function DashboardPage() {
           className="flex items-center justify-between mb-8">
           <div>
             <p className="text-slate-500 text-sm mb-1">Welcome back</p>
-            <h1 className="text-2xl font-bold text-white">{score?.displayName || "Developer"}</h1>
+            <h1 className="text-2xl font-bold text-white">
+              {score?.displayName ?? sessionUser?.displayName ?? "Developer"}
+            </h1>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {platforms.length > 0 && (
@@ -693,6 +733,7 @@ export default function DashboardPage() {
         <ScoreCalculationCard
           qs={queueStatus}
           platformCount={platforms.length}
+          platformsLoading={platformsLoading}
           onScoreAgain={() => void handleRefresh()}
           refreshing={refreshing}
           scoringMeta={
@@ -707,8 +748,20 @@ export default function DashboardPage() {
           }
         />
 
+        {/* Platform grid: skeleton while list loads (often faster than /scores/me — page stays usable) */}
+        {platformsLoading && platforms.length === 0 && (
+          <section className="glass rounded-2xl p-6 border border-white/8 mb-8">
+            <div className="h-6 w-64 skeleton rounded-lg mb-4" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-28 skeleton rounded-xl" />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Saved profile links — always visible when you’ve connected anything */}
-        {platforms.length > 0 && (
+        {!platformsLoading && platforms.length > 0 && (
           <motion.section
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -771,7 +824,7 @@ export default function DashboardPage() {
         )}
 
         {/* No platforms linked yet */}
-        {platforms.length === 0 && !(score && score.compositeScore > 0) && (
+        {!platformsLoading && platforms.length === 0 && !(score && score.compositeScore > 0) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             className="glass rounded-2xl p-12 text-center border border-white/5 mb-8">
             <Trophy className="w-12 h-12 text-brand-400 mx-auto mb-4" />
@@ -788,7 +841,7 @@ export default function DashboardPage() {
         )}
 
         {/* Linked profiles but score not computed yet */}
-        {platforms.length > 0 && score && score.compositeScore <= 0 && (
+        {!platformsLoading && platforms.length > 0 && score && score.compositeScore <= 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -798,6 +851,16 @@ export default function DashboardPage() {
               When each card above shows <span className="text-emerald-400 font-medium">Synced</span>, your composite score is calculated automatically. If you still see errors, use <strong>Re-sync all data</strong> (server must include the queue fix), then wait a few minutes.
             </p>
           </motion.div>
+        )}
+
+        {/* Heavy /api/scores/me — compact placeholder (full breakdown appears when data arrives) */}
+        {scoreLoading && score == null && (
+          <div className="mb-8 flex flex-col lg:flex-row gap-6">
+            <div className="w-full lg:max-w-sm shrink-0">
+              <div className="h-72 skeleton rounded-2xl" />
+            </div>
+            <div className="flex-1 min-h-[200px] skeleton rounded-2xl lg:rounded-xl" />
+          </div>
         )}
 
         {score != null && score.compositeScore > 0 && (
